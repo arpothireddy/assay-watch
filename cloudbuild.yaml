@@ -1,0 +1,94 @@
+# Cloud Build pipeline: build the image, push it to Artifact Registry, deploy
+# it to two Cloud Run Jobs (migrate, crawl), apply migrations, then smoke-test
+# the new image with a dry-run crawl before trusting it. Any failure rolls the
+# crawl job back to the last image that passed this same gate.
+#
+# Triggered on push to `main` (see docs/DEPLOY.md for the one-time trigger
+# setup). This pipeline does NOT run the daily crawl itself -- that's Cloud
+# Scheduler invoking assay-watch-crawl on its own cadence, independent of
+# deploys.
+
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: assay-watch
+  _MIGRATE_JOB: assay-watch-migrate
+  _CRAWL_JOB: assay-watch-crawl
+  _RUNTIME_SA_NAME: assay-watch-runtime
+  _APP_DB_SECRET: assay-watch-app-db-url
+  _MIGRATOR_DB_SECRET: assay-watch-migrator-db-url
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/assay-watch:$SHORT_SHA
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/assay-watch:latest
+      - .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/assay-watch
+
+  - id: deploy-migrate-and-smoke-test
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        AR="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/assay-watch"
+        IMAGE="$AR:$SHORT_SHA"
+        KNOWN_GOOD="$AR:known-good"
+        SA="${_RUNTIME_SA_NAME}@$PROJECT_ID.iam.gserviceaccount.com"
+
+        rollback() {
+          echo "Deploy step failed."
+          if gcloud artifacts docker images describe "$$KNOWN_GOOD" --project=$PROJECT_ID >/dev/null 2>&1; then
+            echo "Rolling ${_CRAWL_JOB} back to the last known-good image."
+            gcloud run jobs update ${_CRAWL_JOB} --project=$PROJECT_ID --region=${_REGION} \
+              --image="$$KNOWN_GOOD" || true
+          else
+            echo "No known-good image on record yet (first deploy) -- nothing to roll back to."
+          fi
+          exit 1
+        }
+        trap rollback ERR
+
+        echo "Deploying ${_MIGRATE_JOB} (alembic upgrade head)..."
+        gcloud run jobs deploy ${_MIGRATE_JOB} \
+          --project=$PROJECT_ID --region=${_REGION} \
+          --image="$$IMAGE" \
+          --command=alembic --args=upgrade,head \
+          --service-account="$$SA" \
+          --set-secrets="ASSAY_MIGRATOR_DATABASE_URL=${_MIGRATOR_DB_SECRET}:latest,ASSAY_DATABASE_URL=${_APP_DB_SECRET}:latest" \
+          --max-retries=0 --task-timeout=5m
+
+        echo "Deploying ${_CRAWL_JOB}..."
+        gcloud run jobs deploy ${_CRAWL_JOB} \
+          --project=$PROJECT_ID --region=${_REGION} \
+          --image="$$IMAGE" \
+          --service-account="$$SA" \
+          --set-secrets="ASSAY_DATABASE_URL=${_APP_DB_SECRET}:latest" \
+          --set-env-vars="ASSAY_USER_AGENT=assay-watch/0.0 (+https://github.com/arpothireddy/assay-watch),ASSAY_CONTACT_URL=https://github.com/arpothireddy/assay-watch" \
+          --max-retries=0 --task-timeout=15m
+
+        echo "Applying migrations..."
+        gcloud run jobs execute ${_MIGRATE_JOB} --project=$PROJECT_ID --region=${_REGION} --wait
+
+        echo "Smoke test: dry-run crawl on the new image..."
+        gcloud run jobs execute ${_CRAWL_JOB} --project=$PROJECT_ID --region=${_REGION} --wait \
+          --args=crawl,--dry-run
+
+        trap - ERR
+        echo "Verified. Marking $$IMAGE as known-good."
+        gcloud artifacts docker tags add "$$IMAGE" "$$KNOWN_GOOD" --project=$PROJECT_ID
+        echo "Deploy complete: ${_CRAWL_JOB} is live on $$IMAGE"
+
+options:
+  logging: CLOUD_LOGGING_ONLY

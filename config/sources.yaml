@@ -1,0 +1,30 @@
+# Source adapter registry — PURE DATA. Adapters are declared here, never wired up
+# by scattered imports. See docs/SOURCES.md for per-source terms and the chosen
+# access approach.
+
+sources:
+  # ── Shopify storefront JSON ────────────────────────────────────────────────
+  # Each store is fetched from its public /products.json endpoint. A store must
+  # only be enabled after its robots.txt AND its own terms have been checked and
+  # recorded in docs/SOURCES.md. The examples below are DISABLED placeholders —
+  # replace them with real, verified stores and flip `enabled: true`.
+  - type: shopify
+    enabled: true
+    min_interval_seconds: 3.0
+    stores:
+      - name: "example-dealer"
+        base_url: "https://example-dealer.example"
+        currency: "USD"
+        enabled: false
+      - name: "another-dealer"
+        base_url: "https://another-dealer.example"
+        currency: "USD"
+        enabled: false
+
+  # ── eBay APIs ──────────────────────────────────────────────────────────────
+  # Registered but unconfigured until developer-program credentials are set
+  # (ASSAY_EBAY_CLIENT_ID / ASSAY_EBAY_CLIENT_SECRET). While unconfigured the
+  # crawl skips it — this is an expected state, not a failure.
+  - type: ebay
+    enabled: true
+    marketplace: "EBAY_US"

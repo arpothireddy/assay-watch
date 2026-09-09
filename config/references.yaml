@@ -1,0 +1,100 @@
+# Canonical reference registry — PURE DATA, no code reads it but the loader.
+#
+# Seeded with liquid steel sports references. This list is meant to be edited and
+# extended freely: add entries, toggle `enabled`, refine `search_aliases` with the
+# strings sellers actually use. Aliases drive Phase 0's crude client-side matching,
+# so keep them specific enough to avoid matching unrelated models.
+#
+# Each entry:
+#   ref            canonical reference number
+#   brand          maker
+#   model_name     human name
+#   search_aliases strings a listing title/handle/sku might use for this ref
+#   enabled        include in crawls when true
+
+references:
+  - ref: "126610LN"
+    brand: "Rolex"
+    model_name: "Submariner Date"
+    search_aliases: ["126610LN", "126610 LN"]
+    enabled: true
+  - ref: "126710BLRO"
+    brand: "Rolex"
+    model_name: "GMT-Master II Pepsi"
+    search_aliases: ["126710BLRO", "Pepsi"]
+    enabled: true
+  - ref: "124300"
+    brand: "Rolex"
+    model_name: "Oyster Perpetual 41"
+    search_aliases: ["124300"]
+    enabled: true
+  - ref: "116500LN"
+    brand: "Rolex"
+    model_name: "Daytona"
+    search_aliases: ["116500LN", "116500 LN"]
+    enabled: true
+  - ref: "126710BLNR"
+    brand: "Rolex"
+    model_name: "GMT-Master II Batman"
+    search_aliases: ["126710BLNR", "Batman", "Batgirl"]
+    enabled: true
+  - ref: "126334"
+    brand: "Rolex"
+    model_name: "Datejust 41"
+    search_aliases: ["126334"]
+    enabled: true
+  - ref: "214270"
+    brand: "Rolex"
+    model_name: "Explorer 39"
+    search_aliases: ["214270"]
+    enabled: true
+  - ref: "310.30.42.50.01.002"
+    brand: "Omega"
+    model_name: "Speedmaster Moonwatch Professional"
+    search_aliases: ["310.30.42.50.01.002", "Moonwatch Professional"]
+    enabled: true
+  - ref: "210.30.42.20.01.001"
+    brand: "Omega"
+    model_name: "Seamaster Diver 300M"
+    search_aliases: ["210.30.42.20.01.001", "Seamaster Diver 300M"]
+    enabled: true
+  - ref: "5711/1A"
+    brand: "Patek Philippe"
+    model_name: "Nautilus"
+    search_aliases: ["5711/1A", "5711 1A", "5711"]
+    enabled: true
+  - ref: "5712/1A"
+    brand: "Patek Philippe"
+    model_name: "Nautilus Moon Phase"
+    search_aliases: ["5712/1A", "5712 1A", "5712"]
+    enabled: true
+  - ref: "15500ST"
+    brand: "Audemars Piguet"
+    model_name: "Royal Oak"
+    search_aliases: ["15500ST", "15500"]
+    enabled: true
+  - ref: "15400ST"
+    brand: "Audemars Piguet"
+    model_name: "Royal Oak"
+    search_aliases: ["15400ST", "15400"]
+    enabled: true
+  - ref: "M79030N"
+    brand: "Tudor"
+    model_name: "Black Bay Fifty-Eight"
+    search_aliases: ["M79030N", "79030N", "Fifty-Eight", "Fifty Eight"]
+    enabled: true
+  - ref: "M7941A1A0RU"
+    brand: "Tudor"
+    model_name: "Black Bay 58 GMT"
+    search_aliases: ["M7941A1A0RU", "7941A1A0RU"]
+    enabled: true
+  - ref: "WSSA0009"
+    brand: "Cartier"
+    model_name: "Santos"
+    search_aliases: ["WSSA0009"]
+    enabled: true
+  - ref: "WGSA0007"
+    brand: "Cartier"
+    model_name: "Santos"
+    search_aliases: ["WGSA0007"]
+    enabled: true
