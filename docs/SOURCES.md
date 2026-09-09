@@ -29,12 +29,33 @@ Crawling policy applies to every implemented source:
   throttle it, and a store's terms may still forbid automated collection.
 - **Personal data:** Shopify product data is dealer/business inventory, not
   private-seller personal data. Still minimise what is stored.
-- **Terms last reviewed:** _pending — populate per store before enabling it._
-- **Status:** implemented (adapter); stores enabled individually in config.
+- **Status:** implemented (adapter); stores enabled individually below.
 
-> Open question being resolved separately: which target dealers actually expose
-> a usable `/products.json`. Until confirmed per store, the shopify source ships
-> with example/placeholder stores disabled by default.
+### Enabled stores
+
+| Store | Base URL | `/products.json` | `robots.txt` | ToS reviewed |
+|---|---|---|---|---|
+| Windup Watch Shop | windupwatchshop.com | reachable | permits it | _pending_ |
+| Topper Jewelers | topperjewelers.com | reachable | permits it | _pending_ |
+| Analog:Shift | analogshift.com | reachable | permits it | _pending_ |
+| Hodinkee Shop | shop.hodinkee.com | reachable | permits it | _pending_ |
+
+`/products.json` and `robots.txt` were checked 2026-09-09. Each store's own
+Terms of Service still needs a human read-through before this is airtight —
+reachability and `robots.txt` are necessary but not sufficient per the policy
+above. Flip a store back to `enabled: false` in `config/sources.yaml` if its
+ToS turns out to prohibit this.
+
+### Checked and rejected
+
+| Store | Base URL | Reason |
+|---|---|---|
+| Crown & Caliber | crownandcaliber.com | `/products.json` redirects/404s — not a live Shopify storefront endpoint |
+| Teddy Baldassarre | teddybaldassarre.com | Cloudflare bot-challenge in front of the site — unreachable without defeating bot protection, which the crawling policy above rules out |
+
+> Open question being resolved on an ongoing basis: which further target
+> dealers expose a usable `/products.json`. New candidates get the same
+> reachability + `robots.txt` + ToS check before joining the table above.
 
 ---
 

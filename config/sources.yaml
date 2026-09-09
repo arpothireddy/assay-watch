@@ -6,20 +6,30 @@ sources:
   # ── Shopify storefront JSON ────────────────────────────────────────────────
   # Each store is fetched from its public /products.json endpoint. A store must
   # only be enabled after its robots.txt AND its own terms have been checked and
-  # recorded in docs/SOURCES.md. The examples below are DISABLED placeholders —
-  # replace them with real, verified stores and flip `enabled: true`.
+  # recorded in docs/SOURCES.md.
+  #
+  # Verified so far: /products.json reachable, robots.txt permits it. ToS review
+  # is a separate, still-open item per store — see docs/SOURCES.md.
   - type: shopify
     enabled: true
     min_interval_seconds: 3.0
     stores:
-      - name: "example-dealer"
-        base_url: "https://example-dealer.example"
+      - name: "windup-watch-shop"
+        base_url: "https://windupwatchshop.com"
         currency: "USD"
-        enabled: false
-      - name: "another-dealer"
-        base_url: "https://another-dealer.example"
+        enabled: true
+      - name: "topper-jewelers"
+        base_url: "https://topperjewelers.com"
         currency: "USD"
-        enabled: false
+        enabled: true
+      - name: "analog-shift"
+        base_url: "https://analogshift.com"
+        currency: "USD"
+        enabled: true
+      - name: "hodinkee-shop"
+        base_url: "https://shop.hodinkee.com"
+        currency: "USD"
+        enabled: true
 
   # ── eBay APIs ──────────────────────────────────────────────────────────────
   # Registered but unconfigured until developer-program credentials are set
