@@ -43,8 +43,8 @@ steps:
       - |
         set -euo pipefail
         AR="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/assay-watch"
-        IMAGE="$AR:$SHORT_SHA"
-        KNOWN_GOOD="$AR:known-good"
+        IMAGE="$$AR:$SHORT_SHA"
+        KNOWN_GOOD="$$AR:known-good"
         SA="${_RUNTIME_SA_NAME}@$PROJECT_ID.iam.gserviceaccount.com"
 
         rollback() {
