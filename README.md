@@ -61,7 +61,18 @@ Or run the whole stack in containers with `docker compose up`.
 | `migrations/` | Alembic schema history |
 | `scripts/` | Ops shell: backup and restore-check |
 | `tests/` | Test suite |
-| `docs/` | `SOURCES.md` — per-source terms and access approach |
+| `docs/` | `SOURCES.md` — per-source terms and access approach; `DEPLOY.md` — CI/CD setup |
+
+## Deploy
+
+CI (`ci.yml`) runs ruff, mypy --strict, pytest, gitleaks, pip-audit, and a
+Docker build sanity check on every push and PR.
+
+Deploy is Cloud Build → Artifact Registry → Cloud Run Jobs, on push to `main`,
+with Cloud Scheduler firing the daily crawl. Postgres runs on Neon (free
+tier) rather than Cloud SQL, which has no free tier. Expected cost: $0/month.
+See [`docs/DEPLOY.md`](docs/DEPLOY.md) for the one-time setup and a testing
+checklist; the pipeline itself is [`cloudbuild.yaml`](cloudbuild.yaml).
 
 ## License
 
