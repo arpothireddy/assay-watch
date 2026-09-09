@@ -1,0 +1,76 @@
+# Local + self-hosted stack. Postgres binds to loopback only and is never
+# exposed on a public interface. The app container is hardened: non-root,
+# read-only root filesystem, no new privileges, all capabilities dropped.
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      # The migrator role owns the schema; the official image makes POSTGRES_USER
+      # the superuser, which the init script uses to create the app role.
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_MIGRATOR_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_MIGRATOR_PASSWORD}
+      ASSAY_APP_USER: ${POSTGRES_APP_USER}
+      ASSAY_APP_PASSWORD: ${POSTGRES_APP_PASSWORD}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/db-init:/docker-entrypoint-initdb.d:ro
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_MIGRATOR_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # One-shot: apply migrations, then exit. `docker compose run --rm migrate`.
+  migrate:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_MIGRATOR_USER: ${POSTGRES_MIGRATOR_USER}
+      POSTGRES_MIGRATOR_PASSWORD: ${POSTGRES_MIGRATOR_PASSWORD}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      POSTGRES_HOST: db
+    entrypoint: ["alembic", "upgrade", "head"]
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # The crawler. Run on a schedule (systemd timer / cron on the VM) via
+  # `docker compose run --rm crawl`, or `docker compose run --rm crawl crawl --dry-run`.
+  crawl:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      POSTGRES_HOST: db
+      ASSAY_USER_AGENT: ${ASSAY_USER_AGENT}
+      ASSAY_CONTACT_URL: ${ASSAY_CONTACT_URL}
+      ASSAY_METRICS_DIR: /metrics
+    volumes:
+      - metrics:/metrics
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  pgdata:
+  metrics:

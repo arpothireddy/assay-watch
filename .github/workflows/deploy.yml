@@ -1,0 +1,60 @@
+# Deploys on a green CI run against main, on the self-hosted runner on the VM.
+#
+# NOTE: this workflow is inert until (a) a self-hosted runner is registered on
+# the TrueNAS VM and (b) the POSTGRES_* deploy secrets are set. It is a v1 shaped
+# for a batch crawler rather than a long-running service: "health check" is a
+# --dry-run smoke test of the freshly built image, and rollback re-points the
+# :current tag at the previous image. Registering the runner is the one-time
+# manual step; routine releases after that are push-to-main.
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+jobs:
+  deploy:
+    # Only when CI passed, and only for main.
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' }}
+    runs-on: [self-hosted]
+    env:
+      POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+      POSTGRES_MIGRATOR_USER: ${{ secrets.POSTGRES_MIGRATOR_USER }}
+      POSTGRES_MIGRATOR_PASSWORD: ${{ secrets.POSTGRES_MIGRATOR_PASSWORD }}
+      POSTGRES_APP_USER: ${{ secrets.POSTGRES_APP_USER }}
+      POSTGRES_APP_PASSWORD: ${{ secrets.POSTGRES_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Record current image for rollback
+        run: |
+          echo "PREVIOUS_IMAGE=$(docker image inspect assay-watch:current \
+            --format '{{ index .RepoDigests 0 }}' 2>/dev/null || echo '')" >> "$GITHUB_ENV"
+
+      - name: Build image
+        run: docker build -t "assay-watch:${{ github.sha }}" .
+
+      - name: Apply migrations
+        run: docker compose run --rm migrate
+
+      - name: Smoke test (dry-run crawl on the new image)
+        id: smoke
+        run: docker run --rm --network host
+          -e POSTGRES_DB -e POSTGRES_APP_USER -e POSTGRES_APP_PASSWORD
+          -e POSTGRES_HOST=127.0.0.1
+          "assay-watch:${{ github.sha }}" crawl --dry-run
+
+      - name: Promote image
+        if: success()
+        run: docker tag "assay-watch:${{ github.sha }}" assay-watch:current
+
+      - name: Rollback on failure
+        if: failure() && env.PREVIOUS_IMAGE != ''
+        run: |
+          echo "Deploy failed; restoring previous image."
+          docker tag "$PREVIOUS_IMAGE" assay-watch:current

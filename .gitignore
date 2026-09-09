@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets & local config — real values never enter the repo
+.env
+
+# Local data / crawl output (never committed; the DB lives in Postgres)
+*.db
+/data/
+/backups/
+/metrics/
