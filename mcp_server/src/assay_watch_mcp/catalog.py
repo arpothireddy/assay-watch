@@ -71,16 +71,22 @@ def find_reference(query: str, catalog: list[Reference], *, limit: int = 5) -> l
             )
             continue
 
-        catalog_words = _words(reference.brand) | _words(reference.model_name)
-        if not catalog_words or not query_words:
+        # Brand words alone are never distinguishing -- "Rolex" overlaps every
+        # Rolex reference equally, so a query like "Rolex Submariner" must not
+        # score the Daytona as "likely" just because they share a maker. Model
+        # words have to carry the match; brand only adds to an existing one.
+        model_words = _words(reference.model_name)
+        brand_words = _words(reference.brand)
+        matched_model_words = model_words & query_words
+        if not model_words or not query_words or not matched_model_words:
             continue
-        overlap = len(catalog_words & query_words) / len(catalog_words)
-        if overlap <= 0:
-            continue
-        confidence: Literal["likely", "possible"] = "likely" if overlap >= 0.5 else "possible"
+        model_overlap = len(matched_model_words) / len(model_words)
+        brand_bonus = 0.5 if brand_words & query_words else 0.0
+        score = model_overlap + brand_bonus
+        confidence: Literal["likely", "possible"] = "likely" if model_overlap >= 0.5 else "possible"
         scored.append(
             (
-                overlap * 10,
+                score,
                 ReferenceMatch(
                     ref=reference.ref,
                     brand=reference.brand,
