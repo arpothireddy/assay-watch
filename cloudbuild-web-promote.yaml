@@ -1,0 +1,72 @@
+# Deploys already-built, already-tested images to PRODUCTION. Never builds
+# anything itself -- only re-deploys the exact $SHORT_SHA-tagged images that
+# cloudbuild-web.yaml already verified against staging.
+#
+# The trigger this runs under is created with --require-approval (see
+# docs/DEPLOY-WEB.md), so even though cloudbuild-web.yaml fires this
+# automatically the moment staging passes, it sits pending in the Cloud
+# Build console until a human approves it. That's the entire "test
+# automatically, promote only when a person says so" gate -- there is no
+# other approval mechanism in this pipeline.
+
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: assay-watch
+  _MCP_PROD: assay-watch-mcp
+  _WEB_PROD: assay-watch-web
+  _MCP_RUNTIME_SA: assay-watch-mcp-runtime
+  _WEB_RUNTIME_SA: assay-watch-web-runtime
+  _READER_DB_SECRET: assay-watch-reader-db-url
+  _GEMINI_KEY_SECRET: assay-watch-gemini-api-key
+  # Always passed explicitly by cloudbuild-web.yaml via
+  # --substitutions=_PROMOTE_SHA=<sha>; this default only shows up if this
+  # pipeline is ever fired by hand without it.
+  _PROMOTE_SHA: MISSING
+
+steps:
+  - id: deploy-production
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        if [ "${_PROMOTE_SHA}" = "MISSING" ]; then
+          echo "No _PROMOTE_SHA given. This pipeline must be fired with"
+          echo "--substitutions=_PROMOTE_SHA=<short-sha> -- cloudbuild-web.yaml"
+          echo "does this automatically; don't run this trigger by hand" \
+               "without it."
+          exit 1
+        fi
+
+        MCP_IMAGE="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/assay-watch-mcp:${_PROMOTE_SHA}"
+        WEB_IMAGE="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/assay-watch-web:${_PROMOTE_SHA}"
+        MCP_SA="${_MCP_RUNTIME_SA}@$PROJECT_ID.iam.gserviceaccount.com"
+        WEB_SA="${_WEB_RUNTIME_SA}@$PROJECT_ID.iam.gserviceaccount.com"
+
+        echo "Deploying ${_MCP_PROD} (verified image $$MCP_IMAGE)..."
+        gcloud run deploy ${_MCP_PROD} \
+          --project=$PROJECT_ID --region=${_REGION} \
+          --image="$$MCP_IMAGE" \
+          --service-account="$$MCP_SA" \
+          --allow-unauthenticated --port=8080 \
+          --set-secrets="ASSAY_READER_DATABASE_URL=${_READER_DB_SECRET}:latest"
+
+        MCP_URL="$$(gcloud run services describe ${_MCP_PROD} \
+          --project=$PROJECT_ID --region=${_REGION} --format='value(status.url)')"
+
+        echo "Deploying ${_WEB_PROD} (verified image $$WEB_IMAGE)..."
+        gcloud run deploy ${_WEB_PROD} \
+          --project=$PROJECT_ID --region=${_REGION} \
+          --image="$$WEB_IMAGE" \
+          --service-account="$$WEB_SA" \
+          --allow-unauthenticated --port=8080 \
+          --set-secrets="GEMINI_API_KEY=${_GEMINI_KEY_SECRET}:latest" \
+          --set-env-vars="ASSAY_MCP_SERVER_URL=$$MCP_URL/mcp"
+
+        WEB_URL="$$(gcloud run services describe ${_WEB_PROD} \
+          --project=$PROJECT_ID --region=${_REGION} --format='value(status.url)')"
+        echo "Production is live: $$WEB_URL"
+
+options:
+  logging: CLOUD_LOGGING_ONLY

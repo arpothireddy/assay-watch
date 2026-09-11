@@ -1,0 +1,124 @@
+# Auto-fires on push to main. Builds both new images, deploys them to
+# STAGING Cloud Run services, and runs a real smoke test against the live
+# staging URLs. Never touches production. On success, tags both images
+# "staging-verified" and fires cloudbuild-web-promote.yaml with the exact
+# commit SHA that passed -- that trigger requires manual approval
+# (--require-approval) before it deploys anything, so nothing reaches
+# production without a human saying so.
+#
+# Deploying by the exact $SHORT_SHA-tagged image (not the floating
+# "staging-verified" tag) at promote time matters: if two pushes land close
+# together, the tag could move to a newer commit before the first promote
+# request gets approved. Passing the SHA explicitly means what gets approved
+# is what gets deployed, not whatever "staging-verified" happens to point at
+# by then.
+
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: assay-watch
+  _MCP_STAGING: assay-watch-mcp-staging
+  _WEB_STAGING: assay-watch-web-staging
+  _MCP_RUNTIME_SA: assay-watch-mcp-runtime
+  _WEB_RUNTIME_SA: assay-watch-web-runtime
+  _READER_DB_SECRET: assay-watch-reader-db-url
+  _GEMINI_KEY_SECRET: assay-watch-gemini-api-key
+  _PROMOTE_TRIGGER: assay-watch-web-promote
+
+steps:
+  - id: build-mcp
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - mcp_server/Dockerfile
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/assay-watch-mcp:$SHORT_SHA
+      - .
+
+  - id: build-web
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - web/Dockerfile
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/assay-watch-web:$SHORT_SHA
+      - .
+
+  - id: push-mcp
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/assay-watch-mcp:$SHORT_SHA
+
+  - id: push-web
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/assay-watch-web:$SHORT_SHA
+
+  - id: deploy-staging-and-test
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        MCP_IMAGE="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/assay-watch-mcp:$SHORT_SHA"
+        WEB_IMAGE="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/assay-watch-web:$SHORT_SHA"
+        MCP_SA="${_MCP_RUNTIME_SA}@$PROJECT_ID.iam.gserviceaccount.com"
+        WEB_SA="${_WEB_RUNTIME_SA}@$PROJECT_ID.iam.gserviceaccount.com"
+
+        echo "Deploying ${_MCP_STAGING}..."
+        gcloud run deploy ${_MCP_STAGING} \
+          --project=$PROJECT_ID --region=${_REGION} \
+          --image="$$MCP_IMAGE" \
+          --service-account="$$MCP_SA" \
+          --allow-unauthenticated --port=8080 \
+          --set-secrets="ASSAY_READER_DATABASE_URL=${_READER_DB_SECRET}:latest"
+
+        MCP_URL="$$(gcloud run services describe ${_MCP_STAGING} \
+          --project=$PROJECT_ID --region=${_REGION} --format='value(status.url)')"
+        echo "MCP staging URL: $$MCP_URL"
+
+        echo "Deploying ${_WEB_STAGING}..."
+        gcloud run deploy ${_WEB_STAGING} \
+          --project=$PROJECT_ID --region=${_REGION} \
+          --image="$$WEB_IMAGE" \
+          --service-account="$$WEB_SA" \
+          --allow-unauthenticated --port=8080 \
+          --set-secrets="GEMINI_API_KEY=${_GEMINI_KEY_SECRET}:latest" \
+          --set-env-vars="ASSAY_MCP_SERVER_URL=$$MCP_URL/mcp"
+
+        WEB_URL="$$(gcloud run services describe ${_WEB_STAGING} \
+          --project=$PROJECT_ID --region=${_REGION} --format='value(status.url)')"
+        echo "Web staging URL: $$WEB_URL"
+
+        echo "Smoke test: health check..."
+        curl -sf "$$WEB_URL/healthz"
+        echo ""
+
+        echo "Smoke test: search resolution (exact reference number, no live"
+        echo "inventory required -- this must resolve regardless of what the"
+        echo "crawler happens to have found today)..."
+        RESPONSE="$$(curl -sf -X POST "$$WEB_URL/api/search" \
+          -H 'Content-Type: application/json' -d '{"query": "126610LN"}')"
+        echo "Response: $$RESPONSE"
+        echo "$$RESPONSE" | grep -q '"ref":"126610LN"' \
+          || { echo "FAIL: reference resolution broken"; exit 1; }
+
+        echo "Tagging verified images..."
+        gcloud artifacts docker tags add "$$MCP_IMAGE" \
+          "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/assay-watch-mcp:staging-verified" \
+          --project=$PROJECT_ID
+        gcloud artifacts docker tags add "$$WEB_IMAGE" \
+          "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/assay-watch-web:staging-verified" \
+          --project=$PROJECT_ID
+
+        echo "Staging verified. Requesting production promotion (requires"
+        echo "manual approval -- nothing deploys to production yet)..."
+        gcloud builds triggers run ${_PROMOTE_TRIGGER} --project=$PROJECT_ID \
+          --branch=main --substitutions=_PROMOTE_SHA=$SHORT_SHA
+
+options:
+  logging: CLOUD_LOGGING_ONLY
