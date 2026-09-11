@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>assay-watch</title>
+<style>
+  :root {
+    --ink: #1a1a1a;
+    --muted: #6b6b6b;
+    --line: #e4e2dd;
+    --bg: #faf9f6;
+    --card: #ffffff;
+    --accent: #14532d;
+    --accent-bg: #eaf3ec;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+  }
+  .wrap {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 64px 20px 80px;
+  }
+  h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    text-align: center;
+    margin: 0 0 8px;
+  }
+  .tagline {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin: 0 0 40px;
+  }
+  form {
+    display: flex;
+    gap: 8px;
+  }
+  input[type="text"] {
+    flex: 1;
+    padding: 14px 16px;
+    font-size: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--card);
+    color: var(--ink);
+  }
+  input[type="text"]:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+  }
+  button {
+    padding: 14px 22px;
+    font-size: 1rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 10px;
+    background: var(--ink);
+    color: #fff;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .hint {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.8rem;
+    margin-top: 10px;
+  }
+  #result { margin-top: 36px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .watch-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0 0 2px;
+  }
+  .watch-ref {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin: 0 0 20px;
+  }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 14px 0;
+    border-top: 1px solid var(--line);
+  }
+  .row:first-of-type { border-top: none; padding-top: 0; }
+  .label {
+    font-size: 0.8rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .price { font-size: 1.3rem; font-weight: 700; }
+  .sub { font-size: 0.85rem; color: var(--muted); margin-top: 2px; }
+  a.listing-link {
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: none;
+    font-size: 0.9rem;
+  }
+  a.listing-link:hover { text-decoration: underline; }
+  .badge {
+    display: inline-block;
+    background: var(--accent-bg);
+    color: var(--accent);
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 999px;
+    margin-bottom: 8px;
+  }
+  .explanation {
+    font-size: 0.9rem;
+    color: var(--ink);
+    line-height: 1.5;
+    margin-top: 8px;
+  }
+  .message {
+    text-align: center;
+    color: var(--muted);
+    padding: 20px 0;
+  }
+  .loading {
+    text-align: center;
+    color: var(--muted);
+    padding: 20px 0;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>assay-watch</h1>
+    <p class="tagline">Find the cheapest listing and a fair price for a tracked luxury watch reference.</p>
+
+    <form id="search-form">
+      <input
+        id="query"
+        type="text"
+        placeholder="e.g. Submariner, GMT Pepsi, or 126610LN"
+        autocomplete="off"
+        autofocus
+      />
+      <button type="submit" id="submit-btn">Search</button>
+    </form>
+    <p class="hint">Prices come from a daily crawl of verified dealer storefronts. USD listings only.</p>
+
+    <div id="result"></div>
+  </div>
+
+  <script>
+    const form = document.getElementById("search-form");
+    const input = document.getElementById("query");
+    const btn = document.getElementById("submit-btn");
+    const resultEl = document.getElementById("result");
+
+    function money(str) {
+      const n = parseFloat(str);
+      return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function renderMessage(text) {
+      resultEl.innerHTML = `<div class="card"><p class="message">${escapeHtml(text)}</p></div>`;
+    }
+
+    function renderResult(data) {
+      if (data.message && !data.cheapest) {
+        renderMessage(data.message);
+        return;
+      }
+      const r = data.resolved;
+      const c = data.cheapest;
+      const f = data.fair_price;
+
+      let html = `<div class="card">`;
+      html += `<p class="watch-name">${escapeHtml(r.brand)} ${escapeHtml(r.model_name)}</p>`;
+      html += `<p class="watch-ref">Ref. ${escapeHtml(r.ref)}</p>`;
+
+      html += `<div class="row"><div>
+        <div class="label">Cheapest current listing</div>
+        <div class="price">${money(c.price_amount)}</div>
+        <div class="sub">${escapeHtml(c.seller_name || "Unknown seller")} — ${escapeHtml(c.raw_title)}</div>
+        </div>
+        <a class="listing-link" href="${c.url}" target="_blank" rel="noopener">View listing &rarr;</a>
+      </div>`;
+
+      html += `<div class="row" style="display:block">
+        <span class="badge">Fair price</span>
+        <div class="price">${money(f.median_price)}</div>
+        <div class="sub">Median of ${f.n_listings} current listing${f.n_listings === 1 ? "" : "s"}
+          (range ${money(f.min_price)}&ndash;${money(f.max_price)})
+          ${f.excluded_other_currency ? ` &middot; ${f.excluded_other_currency} non-USD listing(s) not included` : ""}
+        </div>
+        ${data.explanation ? `<p class="explanation">${escapeHtml(data.explanation)}</p>` : ""}
+      </div>`;
+
+      html += `</div>`;
+      resultEl.innerHTML = html;
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const query = input.value.trim();
+      if (!query) return;
+      btn.disabled = true;
+      resultEl.innerHTML = `<div class="loading">Searching&hellip;</div>`;
+      try {
+        const resp = await fetch("/api/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query }),
+        });
+        if (!resp.ok) throw new Error("Search failed (" + resp.status + ")");
+        const data = await resp.json();
+        renderResult(data);
+      } catch (err) {
+        renderMessage("Something went wrong. Please try again.");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
