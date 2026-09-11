@@ -39,12 +39,20 @@ Crawling policy applies to every implemented source:
 | Topper Jewelers | topperjewelers.com | reachable | permits it | _pending_ |
 | Analog:Shift | analogshift.com | reachable | permits it | _pending_ |
 | Hodinkee Shop | shop.hodinkee.com | reachable | permits it | _pending_ |
+| Craft + Tailored | craftandtailored.com | reachable | permits it | no explicit ban found |
+| Bulang & Sons | bulangandsons.com | reachable | permits it | no explicit ban found |
+| Collective Horology | collectivehorology.com | reachable | permits it | no explicit ban found |
 
-`/products.json` and `robots.txt` were checked 2026-09-09. Each store's own
-Terms of Service still needs a human read-through before this is airtight —
-reachability and `robots.txt` are necessary but not sufficient per the policy
-above. Flip a store back to `enabled: false` in `config/sources.yaml` if its
-ToS turns out to prohibit this.
+`/products.json` and `robots.txt` were checked 2026-09-09 (first four) and
+2026-09-11 (next three). "No explicit ban found" is a ToS skim, not a full
+legal review — it means no automated-access prohibition was spotted, not that
+a lawyer signed off. Flip a store back to `enabled: false` in
+`config/sources.yaml` if a closer read turns up a problem. The four marked
+`_pending_` haven't had even that skim yet.
+
+Currency note: Bulang & Sons is UK-based, recorded as `GBP`. Collective
+Horology's currency is unconfirmed and left unset in `config/sources.yaml`
+rather than guessed.
 
 ### Checked and rejected
 

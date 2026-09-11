@@ -30,6 +30,17 @@ sources:
         base_url: "https://shop.hodinkee.com"
         currency: "USD"
         enabled: true
+      - name: "craft-and-tailored"
+        base_url: "https://craftandtailored.com"
+        currency: "USD"
+        enabled: true
+      - name: "bulang-and-sons"
+        base_url: "https://bulangandsons.com"
+        currency: "GBP"
+        enabled: true
+      - name: "collective-horology"
+        base_url: "https://collectivehorology.com"
+        enabled: true
 
   # ── eBay APIs ──────────────────────────────────────────────────────────────
   # Registered but unconfigured until developer-program credentials are set
