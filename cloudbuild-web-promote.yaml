@@ -50,10 +50,12 @@ steps:
           --image="$$MCP_IMAGE" \
           --service-account="$$MCP_SA" \
           --allow-unauthenticated --port=8080 \
-          --set-secrets="ASSAY_READER_DATABASE_URL=${_READER_DB_SECRET}:latest"
+          --set-secrets="ASSAY_READER_DATABASE_URL=${_READER_DB_SECRET}:latest" \
+          2>&1 | tee /tmp/mcp_deploy.log
 
-        MCP_URL="$$(gcloud run services describe ${_MCP_PROD} \
-          --project=$PROJECT_ID --region=${_REGION} --format='value(status.url)')"
+        # Parsed from deploy's own report, not `describe --format=value(status.url)`
+        # -- see cloudbuild-web.yaml for why that field isn't trustworthy here.
+        MCP_URL="$$(awk '/Service URL:/{u=$NF} END{print u}' /tmp/mcp_deploy.log)"
 
         echo "Deploying ${_WEB_PROD} (verified image $$WEB_IMAGE)..."
         gcloud run deploy ${_WEB_PROD} \
@@ -62,10 +64,10 @@ steps:
           --service-account="$$WEB_SA" \
           --allow-unauthenticated --port=8080 \
           --set-secrets="GEMINI_API_KEY=${_GEMINI_KEY_SECRET}:latest" \
-          --set-env-vars="ASSAY_MCP_SERVER_URL=$$MCP_URL/mcp"
+          --set-env-vars="ASSAY_MCP_SERVER_URL=$$MCP_URL/mcp" \
+          2>&1 | tee /tmp/web_deploy.log
 
-        WEB_URL="$$(gcloud run services describe ${_WEB_PROD} \
-          --project=$PROJECT_ID --region=${_REGION} --format='value(status.url)')"
+        WEB_URL="$$(awk '/Service URL:/{u=$NF} END{print u}' /tmp/web_deploy.log)"
         echo "Production is live: $$WEB_URL"
 
 options:

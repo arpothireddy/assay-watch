@@ -75,10 +75,16 @@ steps:
           --image="$$MCP_IMAGE" \
           --service-account="$$MCP_SA" \
           --allow-unauthenticated --port=8080 \
-          --set-secrets="ASSAY_READER_DATABASE_URL=${_READER_DB_SECRET}:latest"
+          --set-secrets="ASSAY_READER_DATABASE_URL=${_READER_DB_SECRET}:latest" \
+          2>&1 | tee /tmp/mcp_deploy.log
 
-        MCP_URL="$$(gcloud run services describe ${_MCP_STAGING} \
-          --project=$PROJECT_ID --region=${_REGION} --format='value(status.url)')"
+        # Parsed from deploy's own report, not a separate `describe` call:
+        # `describe --format=value(status.url)` has been observed returning
+        # the legacy hash-based URL (SERVICE-HASH-REGIONCODE.a.run.app) for
+        # this project even though only the newer project-number-based URL
+        # (SERVICE-PROJECTNUMBER.REGION.run.app, printed here by deploy
+        # itself) actually routes -- the legacy one 404s at Google's edge.
+        MCP_URL="$$(awk '/Service URL:/{u=$NF} END{print u}' /tmp/mcp_deploy.log)"
         echo "MCP staging URL: $$MCP_URL"
 
         echo "Deploying ${_WEB_STAGING}..."
@@ -88,10 +94,10 @@ steps:
           --service-account="$$WEB_SA" \
           --allow-unauthenticated --port=8080 \
           --set-secrets="GEMINI_API_KEY=${_GEMINI_KEY_SECRET}:latest" \
-          --set-env-vars="ASSAY_MCP_SERVER_URL=$$MCP_URL/mcp"
+          --set-env-vars="ASSAY_MCP_SERVER_URL=$$MCP_URL/mcp" \
+          2>&1 | tee /tmp/web_deploy.log
 
-        WEB_URL="$$(gcloud run services describe ${_WEB_STAGING} \
-          --project=$PROJECT_ID --region=${_REGION} --format='value(status.url)')"
+        WEB_URL="$$(awk '/Service URL:/{u=$NF} END{print u}' /tmp/web_deploy.log)"
         echo "Web staging URL: $$WEB_URL"
 
         echo "Smoke test: health check (retrying -- the allUsers IAM binding"
