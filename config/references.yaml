@@ -21,7 +21,10 @@ references:
   - ref: "126710BLRO"
     brand: "Rolex"
     model_name: "GMT-Master II Pepsi"
-    search_aliases: ["126710BLRO", "Pepsi"]
+    # "Pepsi" dropped: the nickname is shared across multiple red/blue GMT
+    # references over the decades (16700, 1675, 16750, ...), not unique to
+    # this one -- confirmed matching a vintage 16710 listing in practice.
+    search_aliases: ["126710BLRO"]
     enabled: true
   - ref: "124300"
     brand: "Rolex"
@@ -36,7 +39,9 @@ references:
   - ref: "126710BLNR"
     brand: "Rolex"
     model_name: "GMT-Master II Batman"
-    search_aliases: ["126710BLNR", "Batman", "Batgirl"]
+    # "Batman"/"Batgirl" dropped: same nickname-collision risk as "Pepsi"
+    # above -- not provably unique to this reference.
+    search_aliases: ["126710BLNR"]
     enabled: true
   - ref: "126334"
     brand: "Rolex"
@@ -51,37 +56,52 @@ references:
   - ref: "310.30.42.50.01.002"
     brand: "Omega"
     model_name: "Speedmaster Moonwatch Professional"
-    search_aliases: ["310.30.42.50.01.002", "Moonwatch Professional"]
+    # "Moonwatch Professional" dropped: Omega has used this marketing name
+    # across multiple reference generations (hesalite, sapphire, different
+    # calibers) -- not unique to this reference.
+    search_aliases: ["310.30.42.50.01.002"]
     enabled: true
   - ref: "210.30.42.20.01.001"
     brand: "Omega"
     model_name: "Seamaster Diver 300M"
-    search_aliases: ["210.30.42.20.01.001", "Seamaster Diver 300M"]
+    # "Seamaster Diver 300M" dropped: this family name spans many different
+    # colorway/bezel references, each its own distinct product.
+    search_aliases: ["210.30.42.20.01.001"]
     enabled: true
   - ref: "5711/1A"
     brand: "Patek Philippe"
     model_name: "Nautilus"
-    search_aliases: ["5711/1A", "5711 1A", "5711"]
+    # Bare "5711" dropped: shared with other material/dial variants of the
+    # same base number (5711R rose gold, special editions, ...).
+    search_aliases: ["5711/1A", "5711 1A"]
     enabled: true
   - ref: "5712/1A"
     brand: "Patek Philippe"
     model_name: "Nautilus Moon Phase"
-    search_aliases: ["5712/1A", "5712 1A", "5712"]
+    # Bare "5712" dropped -- same reasoning as 5711/1A above.
+    search_aliases: ["5712/1A", "5712 1A"]
     enabled: true
   - ref: "15500ST"
     brand: "Audemars Piguet"
     model_name: "Royal Oak"
-    search_aliases: ["15500ST", "15500"]
+    # Bare "15500" dropped: shared with other material variants (15500BC,
+    # 15500OR, ...) of the same base number.
+    search_aliases: ["15500ST"]
     enabled: true
   - ref: "15400ST"
     brand: "Audemars Piguet"
     model_name: "Royal Oak"
-    search_aliases: ["15400ST", "15400"]
+    # Bare "15400" dropped -- same reasoning as 15500ST above.
+    search_aliases: ["15400ST"]
     enabled: true
   - ref: "M79030N"
     brand: "Tudor"
     model_name: "Black Bay Fifty-Eight"
-    search_aliases: ["M79030N", "79030N", "Fifty-Eight", "Fifty Eight"]
+    # "Fifty-Eight" / "Fifty Eight" dropped: that's the model FAMILY name,
+    # also used by the discontinued non-M-prefix "79030" (older manufacture
+    # caliber) -- confirmed matching those listings in practice. "79030N"
+    # (with the N suffix) still reliably identifies the current generation.
+    search_aliases: ["M79030N", "79030N"]
     enabled: true
   - ref: "M7941A1A0RU"
     brand: "Tudor"
