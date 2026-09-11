@@ -84,3 +84,36 @@ def test_health_unconfigured_without_stores() -> None:
     client = PoliteClient(user_agent="assay-test", min_interval_seconds=0.0)
     adapter = ShopifyAdapter(stores=[], client=client)
     assert adapter.health_check().status is HealthStatus.UNCONFIGURED
+
+
+def test_one_store_failure_does_not_block_others() -> None:
+    """A store whose catalog fetch raises (robots disallow, network error, ...)
+    must not sink every other store's results for the reference -- and, since a
+    failed fetch is never cached, must not keep re-raising on every subsequent
+    reference either."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "bad.test":
+            if request.url.path == "/robots.txt":
+                return httpx.Response(200, text="User-agent: *\nDisallow: /")
+            return httpx.Response(404)
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: *\nAllow: /")
+        if request.url.path == "/products.json":
+            page = int(request.url.params.get("page", "1"))
+            products = _PRODUCTS if page == 1 else []
+            return httpx.Response(200, json={"products": products})
+        return httpx.Response(404)
+
+    client = PoliteClient(
+        user_agent="assay-test", min_interval_seconds=0.0, transport=make_transport(handler)
+    )
+    bad_store = ShopifyStore(name="bad", base_url="https://bad.test", currency="USD")
+    good_store = ShopifyStore(name="good", base_url="https://good.test", currency="USD")
+    adapter = ShopifyAdapter(stores=[bad_store, good_store], client=client)
+    ref = Reference(ref="126610LN", brand="Rolex", model_name="Submariner", search_aliases=[])
+
+    listings = adapter.fetch(ref)
+
+    assert len(listings) == 1
+    assert listings[0].source_listing_id == "good:111"

@@ -142,7 +142,17 @@ class ShopifyAdapter(SourceAdapter):
         terms = [_normalize(t) for t in reference.all_terms()]
         listings: list[RawListing] = []
         for store in self._stores:
-            for product in self._load_catalog(store):
+            try:
+                catalog = self._load_catalog(store)
+            except Exception as exc:  # noqa: BLE001 - one bad store must not
+                # sink every other store's results for this reference (and,
+                # since a failed fetch is never cached, it would otherwise
+                # re-raise on every subsequent reference too).
+                log.warning(
+                    "shopify.store_failed", store=store.name, error=f"{type(exc).__name__}: {exc}"
+                )
+                continue
+            for product in catalog:
                 if self._matches(product, terms):
                     listings.append(self._to_listing(store, product))
         return listings

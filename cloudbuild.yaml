@@ -70,10 +70,16 @@ steps:
           --max-retries=0 --task-timeout=5m
 
         echo "Deploying ${_CRAWL_JOB}..."
+        # 1Gi, not the 512Mi platform default: ShopifyAdapter holds every
+        # enabled store's full catalogue in memory for the life of one run
+        # (one store alone has been seen at 5,000+ products), and a run that
+        # gets OOM-killed mid-flight leaves crawl_runs stuck at its pessimistic
+        # "failed" default with no error_summary -- silent, not a clean error.
         gcloud run jobs deploy ${_CRAWL_JOB} \
           --project=$PROJECT_ID --region=${_REGION} \
           --image="$$IMAGE" \
           --service-account="$$SA" \
+          --memory=1Gi \
           --set-secrets="ASSAY_DATABASE_URL=${_APP_DB_SECRET}:latest" \
           --set-env-vars="ASSAY_USER_AGENT=assay-watch/0.0 (+https://github.com/arpothireddy/assay-watch),ASSAY_CONTACT_URL=https://github.com/arpothireddy/assay-watch" \
           --max-retries=0 --task-timeout=15m
