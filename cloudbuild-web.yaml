@@ -84,7 +84,7 @@ steps:
         # this project even though only the newer project-number-based URL
         # (SERVICE-PROJECTNUMBER.REGION.run.app, printed here by deploy
         # itself) actually routes -- the legacy one 404s at Google's edge.
-        MCP_URL="$$(awk '/Service URL:/{u=$NF} END{print u}' /tmp/mcp_deploy.log)"
+        MCP_URL="$$(awk '/Service URL:/{u=$$NF} END{print u}' /tmp/mcp_deploy.log)"
         echo "MCP staging URL: $$MCP_URL"
 
         echo "Deploying ${_WEB_STAGING}..."
@@ -97,7 +97,7 @@ steps:
           --set-env-vars="ASSAY_MCP_SERVER_URL=$$MCP_URL/mcp" \
           2>&1 | tee /tmp/web_deploy.log
 
-        WEB_URL="$$(awk '/Service URL:/{u=$NF} END{print u}' /tmp/web_deploy.log)"
+        WEB_URL="$$(awk '/Service URL:/{u=$$NF} END{print u}' /tmp/web_deploy.log)"
         echo "Web staging URL: $$WEB_URL"
 
         echo "Smoke test: health check (retrying -- the allUsers IAM binding"

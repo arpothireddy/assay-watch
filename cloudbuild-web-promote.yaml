@@ -55,7 +55,7 @@ steps:
 
         # Parsed from deploy's own report, not `describe --format=value(status.url)`
         # -- see cloudbuild-web.yaml for why that field isn't trustworthy here.
-        MCP_URL="$$(awk '/Service URL:/{u=$NF} END{print u}' /tmp/mcp_deploy.log)"
+        MCP_URL="$$(awk '/Service URL:/{u=$$NF} END{print u}' /tmp/mcp_deploy.log)"
 
         echo "Deploying ${_WEB_PROD} (verified image $$WEB_IMAGE)..."
         gcloud run deploy ${_WEB_PROD} \
@@ -67,7 +67,7 @@ steps:
           --set-env-vars="ASSAY_MCP_SERVER_URL=$$MCP_URL/mcp" \
           2>&1 | tee /tmp/web_deploy.log
 
-        WEB_URL="$$(awk '/Service URL:/{u=$NF} END{print u}' /tmp/web_deploy.log)"
+        WEB_URL="$$(awk '/Service URL:/{u=$$NF} END{print u}' /tmp/web_deploy.log)"
         echo "Production is live: $$WEB_URL"
 
 options:
