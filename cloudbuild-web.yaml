@@ -94,21 +94,23 @@ steps:
           --project=$PROJECT_ID --region=${_REGION} --format='value(status.url)')"
         echo "Web staging URL: $$WEB_URL"
 
-        echo "Smoke test: health check (retrying -- a freshly-deployed"
-        echo "revision's public access / DNS can lag a few seconds behind"
-        echo "the IAM policy API call reporting done)..."
+        echo "Smoke test: health check (retrying -- the allUsers IAM binding"
+        echo "that makes a freshly-deployed revision public can take longer"
+        echo "than a few seconds to actually take effect, even after the"
+        echo "setIamPolicy API call itself reports done)..."
         HEALTH_OK=""
-        for attempt in $(seq 1 10); do
-          if curl -sf "$$WEB_URL/healthz"; then
+        for attempt in $(seq 1 30); do
+          HTTP_CODE="$$(curl -s -o /tmp/healthz_body -w '%{http_code}' "$$WEB_URL/healthz" || echo curl_error)"
+          if [ "$$HTTP_CODE" = "200" ]; then
             HEALTH_OK=1
-            echo ""
+            echo "attempt $$attempt/30: HTTP 200, body: $$(cat /tmp/healthz_body)"
             break
           fi
-          echo "attempt $$attempt/10 not ready yet, retrying in 5s..."
-          sleep 5
+          echo "attempt $$attempt/30: HTTP $$HTTP_CODE, body: $$(cat /tmp/healthz_body 2>/dev/null || echo '<none>'), retrying in 10s..."
+          sleep 10
         done
         if [ -z "$$HEALTH_OK" ]; then
-          echo "FAIL: health check never succeeded after 10 attempts"
+          echo "FAIL: health check never returned HTTP 200 after 30 attempts (5 minutes)"
           exit 1
         fi
 
