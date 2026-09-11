@@ -15,6 +15,7 @@ from assay_watch_mcp.server import (
     find_reference_tool,
     get_cheapest_listing_tool,
     get_fair_price_tool,
+    list_tracked_references_tool,
 )
 
 
@@ -23,6 +24,12 @@ def test_find_reference_tool_resolves_against_the_real_bundled_catalog() -> None
     shipped in the image, not a test fixture standing in for it."""
     matches = find_reference_tool("Rolex Submariner")
     assert any(m.ref == "126610LN" for m in matches)
+
+
+def test_list_tracked_references_tool_returns_the_full_catalog() -> None:
+    entries = list_tracked_references_tool()
+    assert any(e.ref == "126610LN" and e.brand == "Rolex" for e in entries)
+    assert len(entries) >= 15  # the real catalog has 17 as of this writing
 
 
 def test_pricing_tools_read_through_to_the_configured_database(clean_db: Engine) -> None:

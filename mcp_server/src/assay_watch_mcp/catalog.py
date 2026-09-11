@@ -42,6 +42,12 @@ class ReferenceMatch(BaseModel):
     confidence: Literal["exact", "likely", "possible"]
 
 
+class CatalogEntry(BaseModel):
+    ref: str
+    brand: str
+    model_name: str
+
+
 def load_catalog(path: Path) -> list[Reference]:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return [Reference(**r) for r in data.get("references", []) if r.get("enabled", True)]

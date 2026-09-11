@@ -13,7 +13,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
 from . import queries
-from .catalog import Reference, ReferenceMatch, find_reference, load_catalog
+from .catalog import CatalogEntry, Reference, ReferenceMatch, find_reference, load_catalog
 from .queries import CheapestListing, FairPrice
 from .settings import get_settings
 
@@ -48,6 +48,15 @@ def find_reference_tool(query: str) -> list[ReferenceMatch]:
     first, or an empty list if nothing in the tracked catalog matches --
     that's a legitimate answer, not an error."""
     return find_reference(query, _catalog())
+
+
+@server.tool()
+def list_tracked_references_tool() -> list[CatalogEntry]:
+    """Every tracked reference (ref, brand, model name), unscored -- for a
+    caller doing its own semantic matching (e.g. an LLM reasoning about a
+    query like "steel dive watch under $15k" that find_reference's literal
+    word-overlap can't resolve on its own)."""
+    return [CatalogEntry(ref=r.ref, brand=r.brand, model_name=r.model_name) for r in _catalog()]
 
 
 @server.tool()
