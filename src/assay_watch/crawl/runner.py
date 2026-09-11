@@ -11,6 +11,7 @@ import time
 from dataclasses import dataclass
 
 import httpx
+from sqlalchemy.orm import Session
 
 from ..adapters.base import HealthStatus, Reference, SourceAdapter
 from ..adapters.registry import build_adapters
@@ -35,24 +36,36 @@ class SourceResult:
 def _iterate(
     adapter: SourceAdapter,
     references: list[Reference],
-    session: object | None,
+    session: Session | None,
     run: object | None,
 ) -> tuple[int, int, int, list[str]]:
-    """Fetch every reference. Returns (found, n_ok, n_failed, errors)."""
+    """Fetch every reference and record its listings. Returns (found, n_ok,
+    n_failed, errors).
+
+    The DB write is inside the same try as the fetch: a failure recording one
+    reference's listings must not abort every subsequent reference too (it
+    used to sit outside this try, so it did). Postgres aborts the whole
+    transaction on any statement error, so the session is rolled back before
+    moving on -- without that, the next statement on this same session
+    (including the caller's own attempt to log the run as failed) raises
+    ``PendingRollbackError`` instead of the real error.
+    """
     found = ok = failed = 0
     errors: list[str] = []
     for ref in references:
         try:
             listings = adapter.fetch(ref)
+            if session is not None and run is not None and listings:
+                storage.record_listings(session, run, ref, listings)  # type: ignore[arg-type]
         except Exception as exc:  # one reference failing must not abort the source
             failed += 1
             errors.append(f"{ref.ref}: {type(exc).__name__}: {exc}")
             log.error("crawl.fetch_failed", source=adapter.name, reference=ref.ref, error=str(exc))
+            if session is not None:
+                session.rollback()
             continue
         ok += 1
         found += len(listings)
-        if session is not None and run is not None and listings:
-            storage.record_listings(session, run, ref, listings)  # type: ignore[arg-type]
     return found, ok, failed, errors
 
 
@@ -102,7 +115,16 @@ def _run_one(
             summary = "; ".join(errors)[:2000] or None
         except Exception as exc:  # catastrophic — the adapter itself blew up
             log.error("crawl.aborted", source=adapter.name, error=str(exc))
-            storage.finish_run(session, run, "failed", 0, f"{type(exc).__name__}: {exc}")
+            # Postgres aborts the whole transaction on any statement error;
+            # without rolling back first, this commit itself raises
+            # PendingRollbackError instead of recording the real failure --
+            # which is exactly how a real run once died silently (status
+            # stuck at "failed" with error_summary left NULL forever).
+            session.rollback()
+            try:
+                storage.finish_run(session, run, "failed", 0, f"{type(exc).__name__}: {exc}")
+            except Exception as finish_exc:  # recording the failure must not itself crash the run
+                log.error("crawl.finish_run_failed", source=adapter.name, error=str(finish_exc))
             return SourceResult(adapter.name, "failed", 0, time.monotonic() - start)
         storage.finish_run(session, run, status, found, summary)
 
