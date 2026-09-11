@@ -12,7 +12,12 @@ sources:
   # is a separate, still-open item per store — see docs/SOURCES.md.
   - type: shopify
     enabled: true
-    min_interval_seconds: 3.0
+    # Bumped from 3.0 -> 6.0: craftandtailored.com returned repeated 429s at
+    # 3s/host even with the client's existing retry+backoff. This is a daily
+    # batch job with no time pressure, so slower and more conservative costs
+    # nothing. Applies per-host, so it doesn't slow down the other 6 stores
+    # relative to each other -- each store gets its own independent gate.
+    min_interval_seconds: 6.0
     stores:
       - name: "windup-watch-shop"
         base_url: "https://windupwatchshop.com"
