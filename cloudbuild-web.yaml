@@ -94,9 +94,23 @@ steps:
           --project=$PROJECT_ID --region=${_REGION} --format='value(status.url)')"
         echo "Web staging URL: $$WEB_URL"
 
-        echo "Smoke test: health check..."
-        curl -sf "$$WEB_URL/healthz"
-        echo ""
+        echo "Smoke test: health check (retrying -- a freshly-deployed"
+        echo "revision's public access / DNS can lag a few seconds behind"
+        echo "the IAM policy API call reporting done)..."
+        HEALTH_OK=""
+        for attempt in $(seq 1 10); do
+          if curl -sf "$$WEB_URL/healthz"; then
+            HEALTH_OK=1
+            echo ""
+            break
+          fi
+          echo "attempt $$attempt/10 not ready yet, retrying in 5s..."
+          sleep 5
+        done
+        if [ -z "$$HEALTH_OK" ]; then
+          echo "FAIL: health check never succeeded after 10 attempts"
+          exit 1
+        fi
 
         echo "Smoke test: search resolution (exact reference number, no live"
         echo "inventory required -- this must resolve regardless of what the"
