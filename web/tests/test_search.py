@@ -10,7 +10,13 @@ import pytest
 
 from assay_watch_web import gemini, mcp_client, search
 from assay_watch_web.gemini import ResolvedPick, WebMarketSnapshot, WebSource
-from assay_watch_web.mcp_client import CatalogEntry, CheapestListing, FairPrice, ReferenceMatch
+from assay_watch_web.mcp_client import (
+    CatalogEntry,
+    CheapestListing,
+    FairPrice,
+    ReferenceMatch,
+    WatchListing,
+)
 
 _SUB = CatalogEntry(ref="126610LN", brand="Rolex", model_name="Submariner Date")
 _DAYTONA = CatalogEntry(ref="116500LN", brand="Rolex", model_name="Daytona")
@@ -249,6 +255,7 @@ async def test_no_crawled_listings_falls_back_to_a_web_search(
     monkeypatch.setattr(mcp_client, "find_reference", find_reference)
     monkeypatch.setattr(mcp_client, "get_cheapest_listing", lambda *a, **k: _returns(None))
     monkeypatch.setattr(mcp_client, "get_fair_price", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(mcp_client, "search_live_listings", lambda *a, **k: _returns([]))
     monkeypatch.setattr(gemini, "stream_fair_price_explanation", fail_explain)
     monkeypatch.setattr(gemini, "search_web_market", lambda *a, **k: _returns(_WEB))
 
@@ -273,6 +280,7 @@ async def test_web_search_returning_nothing_is_not_an_error(
     monkeypatch.setattr(mcp_client, "find_reference", find_reference)
     monkeypatch.setattr(mcp_client, "get_cheapest_listing", lambda *a, **k: _returns(None))
     monkeypatch.setattr(mcp_client, "get_fair_price", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(mcp_client, "search_live_listings", lambda *a, **k: _returns([]))
     monkeypatch.setattr(gemini, "search_web_market", lambda *a, **k: _returns(None))
 
     result = await search.run_search(
@@ -428,6 +436,7 @@ async def test_a_reference_with_no_listings_still_gets_an_analysis(
     monkeypatch.setattr(mcp_client, "find_reference", find_reference)
     monkeypatch.setattr(mcp_client, "get_cheapest_listing", lambda *a, **k: _returns(None))
     monkeypatch.setattr(mcp_client, "get_fair_price", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(mcp_client, "search_live_listings", lambda *a, **k: _returns([]))
     monkeypatch.setattr(gemini, "search_web_market", lambda *a, **k: _returns(_WEB))
     monkeypatch.setattr(
         gemini, "stream_web_market_explanation", _explains("Asking prices ", "are not verified.")
@@ -473,6 +482,7 @@ async def test_nothing_grounded_means_no_analysis_at_all(
     monkeypatch.setattr(mcp_client, "find_reference", find_reference)
     monkeypatch.setattr(mcp_client, "get_cheapest_listing", lambda *a, **k: _returns(None))
     monkeypatch.setattr(mcp_client, "get_fair_price", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(mcp_client, "search_live_listings", lambda *a, **k: _returns([]))
     monkeypatch.setattr(gemini, "search_web_market", lambda *a, **k: _returns(None))
     monkeypatch.setattr(gemini, "stream_web_market_explanation", fail_explain)
 
@@ -482,3 +492,85 @@ async def test_nothing_grounded_means_no_analysis_at_all(
     assert result.explanation is None
     assert result.web_market is None
     assert result.message and "web search" in result.message.lower()
+
+
+async def test_live_retail_listings_ride_alongside_the_grounded_summary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two independent live sources, kept in their own fields. Neither may
+    end up totalled into a fair price, which is why they are not merged."""
+
+    async def find_reference(url: str, query: str) -> list[ReferenceMatch]:
+        return [ReferenceMatch(**_SUB.model_dump(), confidence="exact")]
+
+    live = [
+        WatchListing(
+            id="1",
+            title="Rolex Submariner 126610LN",
+            price=12900.0,
+            currency="USD",
+            merchant="A Shop",
+            link="https://x.test/1",
+            source="google_shopping",
+        )
+    ]
+    seen: dict[str, str] = {}
+
+    async def live_search(
+        url: str, query: str, source: str = "google_shopping"
+    ) -> list[WatchListing]:
+        seen["query"] = query
+        return live
+
+    monkeypatch.setattr(mcp_client, "find_reference", find_reference)
+    monkeypatch.setattr(mcp_client, "get_cheapest_listing", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(mcp_client, "get_fair_price", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(mcp_client, "search_live_listings", live_search)
+    monkeypatch.setattr(gemini, "search_web_market", lambda *a, **k: _returns(_WEB))
+    monkeypatch.setattr(gemini, "stream_web_market_explanation", _explains("Thin evidence."))
+
+    result = await search.run_search(
+        "126610LN", mcp_url="http://mcp", gemini_api_key="k", gemini_model="m"
+    )
+    # Queried by brand, model and reference, not the raw user text.
+    assert seen["query"] == "Rolex Submariner Date 126610LN"
+    assert result.live_listings == live
+    assert result.web_market == _WEB
+    assert result.fair_price is None
+
+
+async def test_retail_listings_alone_are_still_an_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Grounded prose can fail while the product lookup succeeds. The
+    listings speak for themselves; that is not a dead end."""
+
+    async def find_reference(url: str, query: str) -> list[ReferenceMatch]:
+        return [ReferenceMatch(**_SUB.model_dump(), confidence="exact")]
+
+    live = [
+        WatchListing(
+            id="1",
+            title="Rolex Submariner",
+            price=12900.0,
+            link="https://x.test/1",
+            source="google_shopping",
+        )
+    ]
+
+    def fail_explain(*args: object, **kwargs: object) -> AsyncIterator[str]:
+        raise AssertionError("no grounded snapshot means nothing to analyse")
+
+    monkeypatch.setattr(mcp_client, "find_reference", find_reference)
+    monkeypatch.setattr(mcp_client, "get_cheapest_listing", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(mcp_client, "get_fair_price", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(mcp_client, "search_live_listings", lambda *a, **k: _returns(live))
+    monkeypatch.setattr(gemini, "search_web_market", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(gemini, "stream_web_market_explanation", fail_explain)
+
+    result = await search.run_search(
+        "126610LN", mcp_url="http://mcp", gemini_api_key="k", gemini_model="m"
+    )
+    assert result.live_listings == live
+    assert result.web_market is None
+    assert result.explanation is None

@@ -24,6 +24,13 @@ class Settings(BaseSettings):
         default=REPO_ROOT / "config" / "references.yaml", alias="ASSAY_REFERENCES_PATH"
     )
 
+    # SerpApi key for live listing lookups. Unset is a supported state: the
+    # fetcher reports itself unconfigured and live searches return nothing,
+    # exactly as the eBay adapter behaves without credentials.
+    serpapi_key: str = Field(default="", alias="SERPAPI_KEY")
+    live_search_ttl_seconds: float = Field(default=900.0, alias="ASSAY_LIVE_SEARCH_TTL")
+    live_search_min_interval: float = Field(default=1.0, alias="ASSAY_LIVE_SEARCH_MIN_INTERVAL")
+
     # Host/port for the streamable-http transport (Cloud Run sets PORT).
     host: str = Field(default="0.0.0.0", alias="HOST")
     port: int = Field(default=8080, alias="PORT")

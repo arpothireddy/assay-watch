@@ -412,6 +412,31 @@ h1 .dim { color: var(--text-dim); }
 .offer .oc { font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--text-faint); }
 .offer-note { margin-top:12px; font-size:11.5px; color:var(--text-faint); line-height:1.5; }
 
+/* Retail listings from the licensed search API. Given images and a card
+   grid because they are products with pictures, unlike the crawled rows --
+   and a source chip on every one, because an asking price found on the open
+   web is not a dealer listing we collected. */
+.retail { margin-top:26px; }
+.retail-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:14px; margin-top:13px; }
+.rcard {
+  display:flex; flex-direction:column; gap:0; text-decoration:none; color:var(--text);
+  background:var(--glass); border:1px solid var(--line); border-radius:14px;
+  overflow:hidden; transition: all .3s var(--spring);
+}
+.rcard:hover { background:var(--glass-hover); border-color:var(--line-strong); transform:translateY(-2px); }
+.rthumb { aspect-ratio:4/3; width:100%; object-fit:cover; background:var(--glass); display:block; }
+.rmeta { padding:12px 13px; display:flex; flex-direction:column; gap:5px; min-width:0; }
+.rprice { font-size:17px; font-weight:600; font-variant-numeric:tabular-nums; }
+.rtitle { font-size:12.5px; color:var(--text-dim); line-height:1.4;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+/* Stacked rather than a row: side by side in a 190px card the chip pushed
+   the seller's name into an ellipsis, and who is selling it is the more
+   useful of the two. */
+.rfoot { display:flex; flex-direction:column; align-items:flex-start; gap:6px; margin-top:4px; }
+.rmerchant { font-size:11px; color:var(--text-faint); max-width:100%; overflow-wrap:anywhere; }
+.rsource { font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--accent);
+  border:1px solid rgba(232,163,61,.35); border-radius:5px; padding:2px 5px; flex:none; }
+
 /* What to pay, by configuration. Completeness moves a used watch's price
    more than anything else, so this is usually the most actionable thing on
    the card when we have no listings of our own. */
@@ -1036,6 +1061,32 @@ function renderResult(r, streaming) {
           <div class="explain" style="border:0;padding-top:18px;margin-top:8px">${esc(r.message)}</div>
           ${(streaming || r.explanation) ? analysisHTML(r, streaming) : ''}
         ` : `<div class="msg">${esc(r.message)}</div>`}
+      </div>`);
+  }
+
+  if (r.live_listings && r.live_listings.length) {
+    out.push(`
+      <div class="card web-card">
+        <div class="web-head">
+          <span class="badge live">● Retail listings</span>
+          <span style="font-size:12.5px;color:var(--text-faint)">
+            Currently listed on the open web — asking prices, not dealer listings we crawled.
+          </span>
+        </div>
+        <div class="retail-grid">
+          ${r.live_listings.map(l => `
+            <a class="rcard" href="${esc(l.link)}" target="_blank" rel="noopener noreferrer">
+              ${l.image_url ? `<img class="rthumb" src="${esc(l.image_url)}" alt="" loading="lazy">` : ''}
+              <div class="rmeta">
+                <span class="rprice">${l.price != null ? esc(money(l.price)) : '—'}</span>
+                <span class="rtitle">${esc(l.title)}</span>
+                <div class="rfoot">
+                  <span class="rmerchant">${esc(l.merchant || 'unknown seller')}</span>
+                  <span class="rsource">${esc((l.source || '').replace('_', ' '))}</span>
+                </div>
+              </div>
+            </a>`).join('')}
+        </div>
       </div>`);
   }
 

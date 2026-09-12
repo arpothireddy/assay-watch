@@ -20,12 +20,20 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .mcp_client import CatalogueRow, CheapestListing, catalogue_overview, list_listings
+from . import orchestrator
+from .mcp_client import (
+    CatalogueRow,
+    CheapestListing,
+    WatchListing,
+    catalogue_overview,
+    list_listings,
+    search_live_listings,
+)
 from .search import SearchResult, run_search
 from .settings import get_settings
 
@@ -66,6 +74,54 @@ async def listings(reference: str) -> list[CheapestListing]:
     otherwise 404 as a two-segment route."""
     settings = get_settings()
     return await list_listings(settings.mcp_server_url, reference)
+
+
+_LIVE_SOURCES = {"google_shopping", "web_search"}
+_MAX_QUERY_LEN = 120
+
+
+@app.get("/api/watches/search")
+async def watches_search(
+    q: str = Query(..., min_length=1, max_length=_MAX_QUERY_LEN),
+    source: str = Query("google_shopping"),
+) -> list[WatchListing]:
+    """Live listings for a free-text watch query.
+
+    Separate from /api/search on purpose: that one answers "what is this
+    worth" from data we crawled and verified, this one answers "what is
+    currently listed" from a search API. Keeping them apart is what stops a
+    caller treating an asking price as a fair price.
+    """
+    query = q.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Query must not be empty.")
+    if source not in _LIVE_SOURCES:
+        # 400 rather than a silent empty list: an unknown source is a caller
+        # bug, and returning [] would read as "nothing found".
+        raise HTTPException(
+            status_code=400,
+            detail=f"source must be one of: {', '.join(sorted(_LIVE_SOURCES))}",
+        )
+    settings = get_settings()
+    return await search_live_listings(settings.mcp_server_url, query, source)
+
+
+@app.post("/api/ask")
+async def ask(request: SearchRequest) -> dict[str, Any]:
+    """The orchestrator: the model picks its own lookups and answers.
+
+    For questions the deterministic path cannot serve -- a budget, a
+    category, a comparison. /api/search remains the fast path for "what is
+    this one watch worth".
+    """
+    settings = get_settings()
+    result = await orchestrator.run(
+        request.query,
+        mcp_url=settings.mcp_server_url,
+        api_key=settings.gemini_api_key,
+        model=settings.gemini_model,
+    )
+    return {"answer": result.text, "tools_used": result.calls, "truncated": result.truncated}
 
 
 @app.post("/api/search")

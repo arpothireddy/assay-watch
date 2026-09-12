@@ -27,13 +27,14 @@ optional and never affects the result.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 
 from pydantic import BaseModel
 
 from . import gemini, mcp_client
 from .gemini import WebMarketSnapshot
-from .mcp_client import CatalogEntry, CheapestListing, FairPrice
+from .mcp_client import CatalogEntry, CheapestListing, FairPrice, WatchListing
 
 StageCallback = Callable[[str, str], Awaitable[None]]
 TextCallback = Callable[[str], Awaitable[None]]
@@ -51,6 +52,11 @@ class SearchResult(BaseModel):
     fair_price: FairPrice | None = None
     explanation: str | None = None
     web_market: WebMarketSnapshot | None = None
+    # Live retail listings for a reference we have none of our own for.
+    # A separate field from ``cheapest``/``fair_price`` because these are
+    # asking prices off a search API, not dealer rows we collected -- the
+    # type system is what keeps the two from being totalled together.
+    live_listings: list[WatchListing] = []
     message: str | None = None
 
 
@@ -150,15 +156,23 @@ async def run_search(
 
     if cheapest is None or fair is None:
         await stage("web_search", "No dealer listings on file \u2014 searching the live market")
-        web = await gemini.search_web_market(
-            api_key=gemini_api_key, model=gemini_model, reference=resolved
+        # Both live sources at once: they are independent lookups against
+        # different providers, and running them in series would make the
+        # emptiest result on the site also the slowest.
+        web, live = await asyncio.gather(
+            gemini.search_web_market(
+                api_key=gemini_api_key, model=gemini_model, reference=resolved
+            ),
+            mcp_client.search_live_listings(
+                mcp_url, f"{resolved.brand} {resolved.model_name} {resolved.ref}"
+            ),
         )
         message = (
             f"No dealer listings for the {resolved.brand} {resolved.model_name} "
             f"({resolved.ref}) in our latest crawl."
             + ("" if web else " A live web search didn't turn up sourced pricing either.")
         )
-        if web is None:
+        if web is None and not live:
             # Nothing grounded came back, so there is nothing to analyse.
             # Writing observations here would be the model talking about
             # figures that do not exist, which is the one thing it must not
@@ -166,11 +180,23 @@ async def run_search(
             await stage("done", "Done")
             return SearchResult(query=query, resolved=resolved, message=message)
 
+        if web is None:
+            # Retail listings but no grounded prose: still a real answer, and
+            # the listings speak for themselves.
+            await stage("done", "Done")
+            return SearchResult(query=query, resolved=resolved, live_listings=live, message=message)
+
         # This branch used to end here, so a reference with no crawled
         # listings got prices and no reading of them -- exactly the case
         # where a buyer has least to go on and most needs one.
         await (on_partial or _noop_partial)(
-            SearchResult(query=query, resolved=resolved, web_market=web, message=message)
+            SearchResult(
+                query=query,
+                resolved=resolved,
+                web_market=web,
+                live_listings=live,
+                message=message,
+            )
         )
         await stage("explain", f"Weighing {len(web.sources)} web source(s)")
         web_text = on_text or _noop_text
@@ -185,6 +211,7 @@ async def run_search(
             query=query,
             resolved=resolved,
             web_market=web,
+            live_listings=live,
             explanation="".join(web_parts).strip() or None,
             message=message,
         )

@@ -67,6 +67,27 @@ class FairPrice(BaseModel):
     excluded_implausible: int
 
 
+class WatchListing(BaseModel):
+    """A live listing, mirroring the MCP server's own model.
+
+    Kept structurally separate from ``CheapestListing`` -- that one is a row
+    we crawled off a dealer's storefront, this is whatever a search API
+    returned. ``source`` rides on every row so the two can never be shown, or
+    totalled, as the same thing.
+    """
+
+    id: str
+    title: str
+    brand: str = ""
+    price: float | None = None
+    currency: str = "USD"
+    merchant: str = ""
+    link: str
+    image_url: str | None = None
+    condition: str | None = None
+    source: Literal["google_shopping", "web_search", "shopify_api"]
+
+
 class MCPError(Exception):
     """The MCP server reachable but a tool call itself failed."""
 
@@ -123,3 +144,12 @@ async def list_listings(server_url: str, reference: str) -> list[CheapestListing
     Same shape as the cheapest one because it is the same rows."""
     data = await _call_tool(server_url, "list_listings_tool", {"reference": reference})
     return [CheapestListing(**item) for item in data or []]
+
+
+async def search_live_listings(
+    server_url: str, query: str, source: str = "google_shopping"
+) -> list[WatchListing]:
+    data = await _call_tool(
+        server_url, "search_live_listings_tool", {"query": query, "source": source}
+    )
+    return [WatchListing.model_validate(x) for x in (data or [])]

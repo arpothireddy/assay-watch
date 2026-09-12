@@ -5,8 +5,8 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from assay_watch_web import main
-from assay_watch_web.mcp_client import CatalogueRow, CheapestListing, Specs
+from assay_watch_web import main, orchestrator
+from assay_watch_web.mcp_client import CatalogueRow, CheapestListing, Specs, WatchListing
 from assay_watch_web.search import SearchResult
 
 
@@ -199,3 +199,99 @@ def test_catalogue_row_tolerates_a_reference_with_no_specs_or_listings(
     row = client.get("/api/catalogue").json()[0]
     assert row["specs"]["case_mm"] is None
     assert row["min_price"] is None
+
+
+def test_live_search_endpoint_returns_listings(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake(url: str, query: str, source: str) -> list[WatchListing]:
+        return [
+            WatchListing(
+                id="1",
+                title="Rolex Submariner 126610LN",
+                brand="Rolex",
+                price=12900.0,
+                currency="USD",
+                merchant="A Shop",
+                link="https://x.test/1",
+                image_url="https://img.test/1.jpg",
+                condition="pre-owned",
+                source="google_shopping",
+            )
+        ]
+
+    monkeypatch.setattr(main, "search_live_listings", fake)
+
+    client = TestClient(main.app)
+    resp = client.get("/api/watches/search", params={"q": "Rolex Submariner 126610LN"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["merchant"] == "A Shop"
+    # Provenance rides on every row, so a consumer cannot mistake an asking
+    # price for a fair price we computed.
+    assert body[0]["source"] == "google_shopping"
+
+
+def test_live_search_passes_the_requested_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, str] = {}
+
+    async def fake(url: str, query: str, source: str) -> list[WatchListing]:
+        seen["query"], seen["source"] = query, source
+        return []
+
+    monkeypatch.setattr(main, "search_live_listings", fake)
+
+    client = TestClient(main.app)
+    client.get("/api/watches/search", params={"q": "  Omega Speedmaster  ", "source": "web_search"})
+    # Trimmed before it reaches the paid API, so "x" and " x " are one query.
+    assert seen == {"query": "Omega Speedmaster", "source": "web_search"}
+
+
+def test_live_search_rejects_an_unknown_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    """400 rather than an empty list: an unknown source is a caller bug, and
+    [] would read as 'nothing found'."""
+
+    async def fail(*args: object, **kwargs: object) -> None:
+        raise AssertionError("must not reach the API with an invalid source")
+
+    monkeypatch.setattr(main, "search_live_listings", fail)
+
+    client = TestClient(main.app)
+    resp = client.get("/api/watches/search", params={"q": "rolex", "source": "chrono24"})
+    assert resp.status_code == 400
+    assert "google_shopping" in resp.json()["detail"]
+
+
+def test_live_search_rejects_a_missing_or_oversized_query() -> None:
+    client = TestClient(main.app)
+    assert client.get("/api/watches/search").status_code == 422
+    assert client.get("/api/watches/search", params={"q": ""}).status_code == 422
+    assert client.get("/api/watches/search", params={"q": "x" * 400}).status_code == 422
+
+
+def test_live_search_rejects_a_whitespace_only_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fail(*args: object, **kwargs: object) -> None:
+        raise AssertionError("must not spend a paid call on whitespace")
+
+    monkeypatch.setattr(main, "search_live_listings", fail)
+
+    client = TestClient(main.app)
+    resp = client.get("/api/watches/search", params={"q": "   "})
+    assert resp.status_code == 400
+
+
+def test_ask_endpoint_reports_the_tools_the_model_chose(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_run(query: str, **kwargs: object) -> orchestrator.OrchestratorResult:
+        return orchestrator.OrchestratorResult("Two good options under $15k.", ["x", "y"], False)
+
+    monkeypatch.setattr(orchestrator, "run", fake_run)
+
+    client = TestClient(main.app)
+    resp = client.post("/api/ask", json={"query": "steel sports watch under 15k"})
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "answer": "Two good options under $15k.",
+        "tools_used": ["x", "y"],
+        "truncated": False,
+    }

@@ -15,6 +15,7 @@ from sqlalchemy.engine import Engine
 
 from . import queries
 from .catalog import CatalogEntry, Reference, ReferenceMatch, Specs, find_reference, load_catalog
+from .fetcher import ListingSource, TTLCache, WatchFetcherService, WatchListing
 from .queries import FairPrice, Listing
 from .settings import get_settings
 
@@ -55,6 +56,21 @@ def _engine(database_url: str) -> Engine:
 @lru_cache
 def _catalog() -> list[Reference]:
     return load_catalog(get_settings().references_path)
+
+
+@lru_cache
+def _fetcher() -> WatchFetcherService:
+    """One instance for the process, so the cache and the rate limiter are
+    shared across every request this instance serves. A per-call instance
+    would reset both and make each of them decorative."""
+    settings = get_settings()
+    brands = tuple(sorted({r.brand for r in _catalog()}))
+    return WatchFetcherService(
+        api_key=settings.serpapi_key,
+        known_brands=brands,
+        cache=TTLCache(ttl_seconds=settings.live_search_ttl_seconds),
+        min_interval_seconds=settings.live_search_min_interval,
+    )
 
 
 @server.tool()
@@ -131,6 +147,24 @@ def get_fair_price_tool(reference: str) -> FairPrice | None:
     null if there's no current USD listing for this reference."""
     settings = get_settings()
     return queries.get_fair_price(_engine(settings.database_url), reference)
+
+
+@server.tool()
+def search_live_listings_tool(
+    query: str, source: ListingSource = "google_shopping"
+) -> list[WatchListing]:
+    """Live listings from a licensed search API, for a watch we have no
+    crawled listings for. ``source`` is "google_shopping" for retail product
+    results or "web_search" for general results.
+
+    These are NOT dealer listings we collected and verified -- they are
+    whatever a search API returned, and every row carries a ``source`` saying
+    so. Never merge them with get_fair_price or get_cheapest_listing output,
+    and never compute a fair price from them; use get_fair_price for that and
+    present these separately. Returns an empty list if no live search is
+    configured or the lookup failed, which is a normal answer, not an error.
+    """
+    return _fetcher().search(query, source)
 
 
 def main() -> None:
