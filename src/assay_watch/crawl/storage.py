@@ -30,7 +30,15 @@ def content_hash(payload: dict[str, Any]) -> str:
 
 
 def start_run(session: Session, source: str) -> CrawlRun:
-    """Insert a run row, pessimistically ``failed`` until it completes cleanly."""
+    """Insert a run row, pessimistically ``failed`` until it completes cleanly.
+
+    Deliberately leaves no transaction open. This used to ``refresh()`` the
+    row after committing it, and that SELECT began a fresh transaction that
+    nothing closed -- so the crawl then spent the whole fetch phase idle
+    inside it and Postgres eventually terminated the connection. The refresh
+    bought nothing either: the INSERT already returns the primary key, so
+    ``run.id`` is populated the moment the commit lands.
+    """
     run = CrawlRun(
         source=source,
         started_at=datetime.now(UTC),
@@ -39,7 +47,6 @@ def start_run(session: Session, source: str) -> CrawlRun:
     )
     session.add(run)
     session.commit()
-    session.refresh(run)
     return run
 
 

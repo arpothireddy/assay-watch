@@ -72,3 +72,28 @@ def test_backfill_report(db_session: Session) -> None:
     assert rows[0].reference == "126610LN"
     assert rows[0].days == 1
     assert rows[0].snapshots == 1
+
+
+def test_no_transaction_is_left_open_across_the_fetch(db_session: Session) -> None:
+    """The crawl holds one session across the whole fetch loop, and a
+    transaction left open during that is one Postgres terminates for being
+    idle -- which is exactly how a real 21-store run died mid-insert.
+
+    start_run used to refresh() after committing; that SELECT began a fresh
+    transaction nothing closed, and the crawl then sat in it for the entire
+    fetch phase. Nothing between a commit and the next statement may open
+    one, including an innocent-looking attribute read.
+    """
+    run = storage.start_run(db_session, "shopify")
+    assert not db_session.in_transaction(), "start_run left a transaction open"
+
+    # Reading the run's fields is what record_listings does first, before any
+    # statement. With expire_on_commit on, these reads alone re-open one.
+    _ = (run.id, run.source, run.status)
+    assert not db_session.in_transaction(), "reading a committed row re-opened a transaction"
+
+    storage.record_listings(db_session, run, REF, [_listing()])
+    assert not db_session.in_transaction(), "record_listings left a transaction open"
+
+    storage.finish_run(db_session, run, "success", 1, None)
+    assert not db_session.in_transaction(), "finish_run left a transaction open"

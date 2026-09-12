@@ -17,6 +17,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from assay_watch.db.models import Base
+from assay_watch.db.session import get_session
 
 TEST_DB_URL = os.environ.get("ASSAY_TEST_DATABASE_URL")
 
@@ -53,8 +54,11 @@ def clean_db(db_engine: Engine) -> Engine:
 
 @pytest.fixture
 def db_session(clean_db: Engine) -> Iterator[Session]:
-    session = Session(clean_db)
-    try:
+    """Built the way the application builds it, not the way a test would.
+
+    This used to construct a bare ``Session``, so the suite never exercised
+    the settings production actually runs with -- and the transaction
+    behaviour those settings control is precisely what killed a real crawl.
+    """
+    with get_session(clean_db) as session:
         yield session
-    finally:
-        session.close()
