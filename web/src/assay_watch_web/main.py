@@ -51,12 +51,30 @@ class SearchRequest(BaseModel):
 
 @app.get("/")
 def index() -> FileResponse:
-    return FileResponse(_STATIC_DIR / "index.html")
+    """The page, explicitly uncached.
+
+    It is a few kilobytes and it changes every deploy, so letting a browser
+    hold onto it buys nothing and costs the ability to tell whether what you
+    are looking at is what was last shipped -- which has burned us.
+    """
+    return FileResponse(
+        _STATIC_DIR / "index.html",
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )
+
+
+@app.get("/api/version")
+def version() -> dict[str, str]:
+    """Which build is actually serving this request.
+
+    Exists so "is my change deployed?" is a fetch rather than an argument.
+    """
+    return {"build": get_settings().build_sha}
 
 
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "build": get_settings().build_sha}
 
 
 @app.get("/api/catalogue")

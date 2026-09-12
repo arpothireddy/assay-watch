@@ -477,6 +477,11 @@ h1 .dim { color: var(--text-dim); }
 .cat-head { display:flex; justify-content:space-between; align-items:baseline; gap:14px; flex-wrap:wrap; padding-top:38px; }
 .cat-title { font-size:19px; font-weight:600; letter-spacing:-0.015em; }
 .cat-note { font-size:12.5px; color:var(--text-faint); }
+.page-foot {
+  margin-top:64px; padding-top:22px; border-top:1px solid var(--line);
+  font-family: ui-monospace, Menlo, monospace; font-size:11px;
+  color:var(--text-faint); letter-spacing:.04em;
+}
 .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(215px,1fr)); gap:11px; margin-top:22px; }
 .tile {
   text-align:left; cursor:pointer; font:inherit;
@@ -659,6 +664,8 @@ h1 .dim { color: var(--text-dim); }
       </div>
     </div>
   </section>
+
+  <footer class="page-foot"><span id="build"></span></footer>
 </div>
 
 <div class="overlay" id="overlay">
@@ -1332,6 +1339,19 @@ $('#form').onsubmit = (e) => { e.preventDefault(); runSearch($('#q').value); };
     renderGrid();
   } catch (e) {
     $('#cat-note').textContent = 'Catalogue unavailable';
+  }
+})();
+
+/* Which build is serving this page. Small and out of the way, but present:
+   "is my change live" should be something you can see, not something we
+   argue about. */
+(async () => {
+  try {
+    const res = await fetch('/api/version');
+    const {build} = await res.json();
+    $('#build').textContent = build === 'dev' ? 'local build' : `build ${build}`;
+  } catch (e) {
+    $('#build').textContent = '';
   }
 })();
 </script>

@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     mcp_server_url: str = Field(alias="ASSAY_MCP_SERVER_URL")
     gemini_model: str = Field(default="gemini-3.1-flash-lite", alias="ASSAY_GEMINI_MODEL")
 
+    # Stamped by the deploy pipeline with the commit it built. "dev" means
+    # this process was started from a working tree rather than an image, so
+    # the page can say so instead of implying a release it is not.
+    build_sha: str = Field(default="dev", alias="ASSAY_BUILD_SHA")
+
     host: str = Field(default="0.0.0.0", alias="HOST")
     port: int = Field(default=8080, alias="PORT")
 

@@ -17,9 +17,27 @@ def test_index_serves_the_search_page() -> None:
     assert "assay-watch" in resp.text
 
 
-def test_healthz() -> None:
+def test_healthz_reports_the_build_it_is_serving() -> None:
     client = TestClient(main.app)
-    assert client.get("/healthz").json() == {"status": "ok"}
+    body = client.get("/healthz").json()
+    assert body["status"] == "ok"
+    # "dev" is the honest default for a process started from a working tree
+    # rather than a deployed image.
+    assert body["build"] == "dev"
+
+
+def test_version_endpoint_answers_which_build_is_live() -> None:
+    """Exists so "is my change deployed?" is a fetch, not an argument."""
+    client = TestClient(main.app)
+    assert client.get("/api/version").json() == {"build": "dev"}
+
+
+def test_the_page_is_served_uncached() -> None:
+    """A browser holding a stale index.html is indistinguishable from a
+    deploy that never happened -- which has cost us real time."""
+    client = TestClient(main.app)
+    resp = client.get("/")
+    assert "no-cache" in resp.headers.get("cache-control", "")
 
 
 def test_search_endpoint_calls_orchestration_and_returns_its_result(

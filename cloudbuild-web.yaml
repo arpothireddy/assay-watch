@@ -102,7 +102,7 @@ steps:
           --service-account="$$WEB_SA" \
           --allow-unauthenticated --port=8080 \
           --set-secrets="GEMINI_API_KEY=${_GEMINI_KEY_SECRET}:latest" \
-          --set-env-vars="ASSAY_MCP_SERVER_URL=$$MCP_URL/mcp" \
+          --set-env-vars="ASSAY_MCP_SERVER_URL=$$MCP_URL/mcp,ASSAY_BUILD_SHA=$SHORT_SHA" \
           2>&1 | tee /tmp/web_deploy.log
 
         WEB_URL="$$(awk '/Service URL:/{u=$$NF} END{print u}' /tmp/web_deploy.log)"
