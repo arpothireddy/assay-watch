@@ -137,9 +137,31 @@ gcloud secrets add-iam-policy-binding assay-watch-serpapi-key \
 
 # 4. Point the trigger at it. Until this is set the deploy simply skips the
 #    secret and logs "Live listing search: disabled".
-gcloud builds triggers update assay-watch-web-deploy \
+#
+#    Note the trigger TYPE is part of the command -- `triggers update` alone
+#    is not a command, and the type must match how the trigger was created
+#    ("github", above in section 3).
+gcloud builds triggers update github assay-watch-web-deploy \
   --update-substitutions=_SERPAPI_KEY_SECRET=assay-watch-serpapi-key
 ```
+
+If that flag is not supported on your gcloud release, edit the trigger as
+data instead -- substitutions are a plain field in the trigger definition,
+so this path works regardless of which flags the CLI exposes this month:
+
+```bash
+gcloud builds triggers export assay-watch-web-deploy --destination=trigger.yaml
+
+# Add (or extend) the substitutions block, keeping any keys already there:
+#   substitutions:
+#     _SERPAPI_KEY_SECRET: assay-watch-serpapi-key
+
+gcloud builds triggers import --source=trigger.yaml
+```
+
+Or in the console: Cloud Build -> Triggers -> `assay-watch-web-deploy` ->
+Edit -> Advanced -> Substitution variables -> add `_SERPAPI_KEY_SECRET` with
+value `assay-watch-serpapi-key`.
 
 Then redeploy and confirm from the app rather than by inspection:
 
