@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .mcp_client import CatalogEntry, CheapestListing, list_listings, list_tracked_references
+from .mcp_client import CatalogueRow, CheapestListing, catalogue_overview, list_listings
 from .search import SearchResult, run_search
 from .settings import get_settings
 
@@ -48,12 +48,12 @@ def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/api/references")
-async def references() -> list[CatalogEntry]:
-    """The tracked catalogue, for the browsable grid on the page. Every
-    entry here is something the crawler actually looks for."""
+@app.get("/api/catalogue")
+async def catalogue() -> list[CatalogueRow]:
+    """The tracked catalogue with curated attributes and live prices -- one
+    call, because the filter panel needs all of it to decide what to show."""
     settings = get_settings()
-    return await list_tracked_references(settings.mcp_server_url)
+    return await catalogue_overview(settings.mcp_server_url)
 
 
 @app.get("/api/listings/{reference:path}")

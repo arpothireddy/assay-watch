@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from assay_watch_web import main
-from assay_watch_web.mcp_client import CatalogEntry, CheapestListing
+from assay_watch_web.mcp_client import CatalogueRow, CheapestListing, Specs
 from assay_watch_web.search import SearchResult
 
 
@@ -85,20 +85,6 @@ def test_stream_reports_a_failure_without_leaking_internals(
     assert "postgres" not in resp.text
 
 
-def test_references_endpoint_returns_the_tracked_catalogue(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def fake_list(url: str) -> list[CatalogEntry]:
-        return [CatalogEntry(ref="126610LN", brand="Rolex", model_name="Submariner Date")]
-
-    monkeypatch.setattr(main, "list_tracked_references", fake_list)
-
-    client = TestClient(main.app)
-    resp = client.get("/api/references")
-    assert resp.status_code == 200
-    assert resp.json() == [{"ref": "126610LN", "brand": "Rolex", "model_name": "Submariner Date"}]
-
-
 def test_listings_endpoint_returns_the_rows_behind_the_numbers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -140,3 +126,49 @@ def test_listings_endpoint_handles_a_reference_containing_a_slash(
     resp = client.get("/api/listings/5711%2F1A")
     assert resp.status_code == 200
     assert seen == ["5711/1A"]
+
+
+def test_catalogue_endpoint_carries_specs_and_live_prices(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_overview(url: str) -> list[CatalogueRow]:
+        return [
+            CatalogueRow(
+                ref="126610LN",
+                brand="Rolex",
+                model_name="Submariner Date",
+                specs=Specs(
+                    case_mm=41, movement="automatic", category="dive", integrated_bracelet=False
+                ),
+                n_listings=3,
+                min_price="11850.00",
+                median_price="13400.00",
+            )
+        ]
+
+    monkeypatch.setattr(main, "catalogue_overview", fake_overview)
+
+    client = TestClient(main.app)
+    resp = client.get("/api/catalogue")
+    assert resp.status_code == 200
+    row = resp.json()[0]
+    assert row["specs"]["case_mm"] == 41
+    assert row["n_listings"] == 3
+    assert row["min_price"] == "11850.00"
+
+
+def test_catalogue_row_tolerates_a_reference_with_no_specs_or_listings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Specs are hand-curated and may be blank, and plenty of references have
+    nothing on file -- neither is an error."""
+
+    async def fake_overview(url: str) -> list[CatalogueRow]:
+        return [CatalogueRow(ref="WSSA0009", brand="Cartier", model_name="Santos", n_listings=0)]
+
+    monkeypatch.setattr(main, "catalogue_overview", fake_overview)
+
+    client = TestClient(main.app)
+    row = client.get("/api/catalogue").json()[0]
+    assert row["specs"]["case_mm"] is None
+    assert row["min_price"] is None

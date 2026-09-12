@@ -11,12 +11,27 @@
 #   model_name     human name
 #   search_aliases strings a listing title/handle/sku might use for this ref
 #   enabled        include in crawls when true
+#   specs          curated attributes, for filtering the catalogue in the UI
+#
+# The `specs` block is HAND-CURATED reference data, not scraped or verified
+# against anything -- it is here so the site can offer real filters instead of
+# decorative ones. Correct it freely; nothing depends on it being complete, and
+# a reference missing a field simply does not appear under that filter.
+#   case_mm             case diameter in mm (omit if unsure)
+#   movement            automatic | manual
+#   category            time-only | time-and-date | dive | gmt | chronograph | moonphase
+#   integrated_bracelet true when the bracelet is part of the case design
 
 references:
   - ref: "126610LN"
     brand: "Rolex"
     model_name: "Submariner Date"
     search_aliases: ["126610LN", "126610 LN"]
+    specs:
+      case_mm: 41
+      movement: "automatic"
+      category: "dive"
+      integrated_bracelet: false
     enabled: true
   - ref: "126710BLRO"
     brand: "Rolex"
@@ -25,16 +40,31 @@ references:
     # references over the decades (16700, 1675, 16750, ...), not unique to
     # this one -- confirmed matching a vintage 16710 listing in practice.
     search_aliases: ["126710BLRO"]
+    specs:
+      case_mm: 40
+      movement: "automatic"
+      category: "gmt"
+      integrated_bracelet: false
     enabled: true
   - ref: "124300"
     brand: "Rolex"
     model_name: "Oyster Perpetual 41"
     search_aliases: ["124300"]
+    specs:
+      case_mm: 41
+      movement: "automatic"
+      category: "time-only"
+      integrated_bracelet: false
     enabled: true
   - ref: "116500LN"
     brand: "Rolex"
     model_name: "Daytona"
     search_aliases: ["116500LN", "116500 LN"]
+    specs:
+      case_mm: 40
+      movement: "automatic"
+      category: "chronograph"
+      integrated_bracelet: false
     enabled: true
   - ref: "126710BLNR"
     brand: "Rolex"
@@ -42,16 +72,31 @@ references:
     # "Batman"/"Batgirl" dropped: same nickname-collision risk as "Pepsi"
     # above -- not provably unique to this reference.
     search_aliases: ["126710BLNR"]
+    specs:
+      case_mm: 40
+      movement: "automatic"
+      category: "gmt"
+      integrated_bracelet: false
     enabled: true
   - ref: "126334"
     brand: "Rolex"
     model_name: "Datejust 41"
     search_aliases: ["126334"]
+    specs:
+      case_mm: 41
+      movement: "automatic"
+      category: "time-and-date"
+      integrated_bracelet: false
     enabled: true
   - ref: "214270"
     brand: "Rolex"
     model_name: "Explorer 39"
     search_aliases: ["214270"]
+    specs:
+      case_mm: 39
+      movement: "automatic"
+      category: "time-only"
+      integrated_bracelet: false
     enabled: true
   - ref: "310.30.42.50.01.002"
     brand: "Omega"
@@ -60,6 +105,11 @@ references:
     # across multiple reference generations (hesalite, sapphire, different
     # calibers) -- not unique to this reference.
     search_aliases: ["310.30.42.50.01.002"]
+    specs:
+      case_mm: 42
+      movement: "manual"
+      category: "chronograph"
+      integrated_bracelet: false
     enabled: true
   - ref: "210.30.42.20.01.001"
     brand: "Omega"
@@ -67,6 +117,11 @@ references:
     # "Seamaster Diver 300M" dropped: this family name spans many different
     # colorway/bezel references, each its own distinct product.
     search_aliases: ["210.30.42.20.01.001"]
+    specs:
+      case_mm: 42
+      movement: "automatic"
+      category: "dive"
+      integrated_bracelet: false
     enabled: true
   - ref: "5711/1A"
     brand: "Patek Philippe"
@@ -76,6 +131,11 @@ references:
     # the common dealer shorthand for this same steel reference -- it stays
     # specific because the material letter is still attached.
     search_aliases: ["5711/1A", "5711 1A", "5711A"]
+    specs:
+      case_mm: 40
+      movement: "automatic"
+      category: "time-and-date"
+      integrated_bracelet: true
     enabled: true
   - ref: "5712/1A"
     brand: "Patek Philippe"
@@ -83,6 +143,11 @@ references:
     # Bare "5712" dropped -- same reasoning as 5711/1A above, "5712A"
     # added for the same reason.
     search_aliases: ["5712/1A", "5712 1A", "5712A"]
+    specs:
+      case_mm: 40
+      movement: "automatic"
+      category: "moonphase"
+      integrated_bracelet: true
     enabled: true
   - ref: "15500ST"
     brand: "Audemars Piguet"
@@ -90,12 +155,22 @@ references:
     # Bare "15500" dropped: shared with other material variants (15500BC,
     # 15500OR, ...) of the same base number.
     search_aliases: ["15500ST"]
+    specs:
+      case_mm: 41
+      movement: "automatic"
+      category: "time-and-date"
+      integrated_bracelet: true
     enabled: true
   - ref: "15400ST"
     brand: "Audemars Piguet"
     model_name: "Royal Oak"
     # Bare "15400" dropped -- same reasoning as 15500ST above.
     search_aliases: ["15400ST"]
+    specs:
+      case_mm: 41
+      movement: "automatic"
+      category: "time-and-date"
+      integrated_bracelet: true
     enabled: true
   - ref: "M79030N"
     brand: "Tudor"
@@ -105,19 +180,37 @@ references:
     # caliber) -- confirmed matching those listings in practice. "79030N"
     # (with the N suffix) still reliably identifies the current generation.
     search_aliases: ["M79030N", "79030N"]
+    specs:
+      case_mm: 39
+      movement: "automatic"
+      category: "dive"
+      integrated_bracelet: false
     enabled: true
   - ref: "M7941A1A0RU"
     brand: "Tudor"
     model_name: "Black Bay 58 GMT"
     search_aliases: ["M7941A1A0RU", "7941A1A0RU"]
+    specs:
+      case_mm: 39
+      movement: "automatic"
+      category: "gmt"
+      integrated_bracelet: false
     enabled: true
   - ref: "WSSA0009"
     brand: "Cartier"
     model_name: "Santos"
     search_aliases: ["WSSA0009"]
+    specs:
+      movement: "automatic"
+      category: "time-and-date"
+      integrated_bracelet: true
     enabled: true
   - ref: "WGSA0007"
     brand: "Cartier"
     model_name: "Santos"
     search_aliases: ["WGSA0007"]
+    specs:
+      movement: "automatic"
+      category: "time-and-date"
+      integrated_bracelet: true
     enabled: true

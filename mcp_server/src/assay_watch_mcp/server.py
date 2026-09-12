@@ -9,13 +9,29 @@ from __future__ import annotations
 from functools import lru_cache
 
 from mcp.server.mcpserver import MCPServer
+from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
 from . import queries
-from .catalog import CatalogEntry, Reference, ReferenceMatch, find_reference, load_catalog
+from .catalog import CatalogEntry, Reference, ReferenceMatch, Specs, find_reference, load_catalog
 from .queries import FairPrice, Listing
 from .settings import get_settings
+
+
+class CatalogueRow(BaseModel):
+    """A tracked reference with everything a catalogue view needs: curated
+    attributes for filtering, live counts and prices for sorting. Prices are
+    strings so a JSON round-trip can't quietly turn a decimal into a float."""
+
+    ref: str
+    brand: str
+    model_name: str
+    specs: Specs
+    n_listings: int
+    min_price: str | None
+    median_price: str | None
+
 
 server = MCPServer(
     name="assay-watch",
@@ -67,6 +83,32 @@ def get_cheapest_listing_tool(reference: str) -> Listing | None:
     reference is actually tracked."""
     settings = get_settings()
     return queries.get_cheapest_listing(_engine(settings.database_url), reference)
+
+
+@server.tool()
+def get_catalogue_overview_tool() -> list[CatalogueRow]:
+    """Every tracked reference with its curated attributes (case size,
+    movement, complication) and, where we have listings, how many and what
+    they cost. One call, so a caller can render and filter a whole catalogue
+    without a lookup per reference. Attributes come from hand-maintained
+    config and may be incomplete; prices come from the latest crawl."""
+    settings = get_settings()
+    prices = {p.reference: p for p in queries.price_summary(_engine(settings.database_url))}
+    rows: list[CatalogueRow] = []
+    for ref in _catalog():
+        p = prices.get(ref.ref)
+        rows.append(
+            CatalogueRow(
+                ref=ref.ref,
+                brand=ref.brand,
+                model_name=ref.model_name,
+                specs=ref.specs,
+                n_listings=p.n_listings if p else 0,
+                min_price=str(p.min_price) if p else None,
+                median_price=str(p.median_price) if p else None,
+            )
+        )
+    return rows
 
 
 @server.tool()

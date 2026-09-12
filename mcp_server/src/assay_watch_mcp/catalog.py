@@ -27,11 +27,28 @@ def _words(text: str) -> set[str]:
     return {w for w in re.split(r"[^a-z0-9]+", text.lower()) if w}
 
 
+class Specs(BaseModel):
+    """Hand-curated attributes from config/references.yaml, for filtering.
+
+    Every field is optional because the config is edited by hand and may be
+    incomplete: a reference missing a field drops out of that one filter
+    rather than being wrongly grouped under a guess.
+    """
+
+    case_mm: int | None = None
+    movement: Literal["automatic", "manual"] | None = None
+    category: (
+        Literal["time-only", "time-and-date", "dive", "gmt", "chronograph", "moonphase"] | None
+    ) = None
+    integrated_bracelet: bool | None = None
+
+
 class Reference(BaseModel):
     ref: str
     brand: str
     model_name: str
     search_aliases: list[str] = Field(default_factory=list)
+    specs: Specs = Field(default_factory=Specs)
     enabled: bool = True
 
 
@@ -46,6 +63,7 @@ class CatalogEntry(BaseModel):
     ref: str
     brand: str
     model_name: str
+    specs: Specs = Field(default_factory=Specs)
 
 
 def load_catalog(path: Path) -> list[Reference]:

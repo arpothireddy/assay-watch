@@ -144,6 +144,65 @@ def list_listings(engine: Engine, reference: str, limit: int = 100) -> list[List
     return [_to_listing(r) for r in rows]
 
 
+class ReferencePrices(BaseModel):
+    reference: str
+    n_listings: int
+    min_price: Decimal
+    median_price: Decimal
+
+
+def price_summary(engine: Engine) -> list[ReferencePrices]:
+    """Listing count and price range for every reference at once.
+
+    One pass rather than a lookup per reference: the catalogue page needs
+    this for all of them to drive its filters, and seventeen round trips to
+    render one grid is seventeen too many. The plausibility floor is applied
+    per reference here, same as everywhere else.
+    """
+    stmt = text(
+        """
+        WITH latest_runs AS (
+            SELECT DISTINCT ON (source) id, source
+            FROM crawl_runs
+            WHERE status IN ('success', 'partial')
+            ORDER BY source, started_at DESC
+        ),
+        priced AS (
+            SELECT ls.search_reference, ls.price_amount
+            FROM listing_snapshots ls
+            JOIN latest_runs lr ON ls.crawl_run_id = lr.id
+            WHERE ls.price_currency = 'USD'
+              AND ls.price_amount IS NOT NULL
+              AND ls.raw_title !~* :non_watch
+        ),
+        medians AS (
+            SELECT search_reference,
+                   percentile_cont(0.5) WITHIN GROUP (ORDER BY price_amount) AS m
+            FROM priced GROUP BY search_reference
+        )
+        SELECT p.search_reference AS reference,
+               COUNT(*) AS n_listings,
+               MIN(p.price_amount) AS min_price,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY p.price_amount) AS median_price
+        FROM priced p
+        JOIN medians md ON md.search_reference = p.search_reference
+        WHERE p.price_amount >= md.m * :floor
+        GROUP BY p.search_reference
+        """
+    )
+    with engine.connect() as conn:
+        rows = conn.execute(stmt, {"non_watch": _NON_WATCH_TITLE, "floor": _PLAUSIBLE_FLOOR}).all()
+    return [
+        ReferencePrices(
+            reference=r.reference,
+            n_listings=r.n_listings,
+            min_price=r.min_price,
+            median_price=r.median_price,
+        )
+        for r in rows
+    ]
+
+
 class FairPrice(BaseModel):
     median_price: Decimal
     min_price: Decimal

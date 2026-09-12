@@ -21,10 +21,28 @@ from mcp.client.streamable_http import streamable_http_client
 from pydantic import BaseModel
 
 
+class Specs(BaseModel):
+    """Curated, and every field optional -- see the MCP server's copy. A
+    reference missing a field drops out of that filter rather than being
+    bucketed under a guess."""
+
+    case_mm: int | None = None
+    movement: str | None = None
+    category: str | None = None
+    integrated_bracelet: bool | None = None
+
+
 class CatalogEntry(BaseModel):
     ref: str
     brand: str
     model_name: str
+    specs: Specs = Specs()
+
+
+class CatalogueRow(CatalogEntry):
+    n_listings: int
+    min_price: str | None = None
+    median_price: str | None = None
 
 
 class ReferenceMatch(CatalogEntry):
@@ -93,6 +111,11 @@ async def get_cheapest_listing(server_url: str, reference: str) -> CheapestListi
 async def get_fair_price(server_url: str, reference: str) -> FairPrice | None:
     data = await _call_tool(server_url, "get_fair_price_tool", {"reference": reference})
     return FairPrice(**data) if data is not None else None
+
+
+async def catalogue_overview(server_url: str) -> list[CatalogueRow]:
+    data = await _call_tool(server_url, "get_catalogue_overview_tool", {})
+    return [CatalogueRow(**row) for row in data or []]
 
 
 async def list_listings(server_url: str, reference: str) -> list[CheapestListing]:
