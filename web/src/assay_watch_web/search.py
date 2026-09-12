@@ -13,8 +13,12 @@ Deterministic first, AI only where it earns its place:
    then, a live web search fills the gap -- reported separately from
    crawled pricing, never merged into it.
 
-Every step reports itself through ``on_stage`` so the UI can show what the
-pipeline is actually doing rather than a generic spinner. The callback is
+Every step reports itself through ``on_stage`` so the UI can show what is
+actually happening rather than a generic spinner. The stage id is a stable
+machine identifier; the detail beside it is a finished sentence meant to be
+displayed as-is, kept here rather than mapped in the front end so one step's
+wording lives in one place. Neither is a claim about architecture: these are
+sequential function calls, not agents deciding anything. The callback is
 optional and never affects the result.
 """
 
@@ -53,25 +57,25 @@ async def _resolve(
     query: str,
     on_stage: StageCallback,
 ) -> CatalogEntry | None:
-    await on_stage("find_reference", "matching against the tracked catalogue")
+    await on_stage("find_reference", "Identifying the reference")
     matches = await mcp_client.find_reference(mcp_url, query)
 
     exact = [m for m in matches if m.confidence == "exact"]
     if len(exact) == 1:
-        await on_stage("resolved", f"exact match: {exact[0].ref}")
+        await on_stage("resolved", f"Matched the {exact[0].brand} {exact[0].model_name}")
         return exact[0]
     if len(matches) == 1:
-        await on_stage("resolved", f"single match: {matches[0].ref}")
+        await on_stage("resolved", f"Matched the {matches[0].brand} {matches[0].model_name}")
         return matches[0]
 
     candidates: list[CatalogEntry] = list(matches)
     if not candidates:
-        await on_stage("list_tracked_references", "no word overlap; loading full catalogue")
+        await on_stage("list_tracked_references", "Reading the full tracked catalogue")
         candidates = await mcp_client.list_tracked_references(mcp_url)
     if not candidates:
         return None
 
-    await on_stage("disambiguate", f"asking the model to choose among {len(candidates)}")
+    await on_stage("disambiguate", f"Narrowing down {len(candidates)} possible matches")
     pick = await gemini.resolve_reference(
         api_key=gemini_api_key, model=gemini_model, query=query, candidates=candidates
     )
@@ -79,7 +83,7 @@ async def _resolve(
         return None
     resolved = next((c for c in candidates if c.ref == pick.ref), None)
     if resolved is not None:
-        await on_stage("resolved", f"model chose {resolved.ref}")
+        await on_stage("resolved", f"Matched the {resolved.brand} {resolved.model_name}")
     return resolved
 
 
@@ -110,16 +114,16 @@ async def run_search(
             "Try a brand, model name, or reference number.",
         )
 
-    await stage("pricing", f"querying crawled listings for {resolved.ref}")
+    await stage("pricing", f"Checking dealer listings for {resolved.ref}")
     cheapest = await mcp_client.get_cheapest_listing(mcp_url, resolved.ref)
     fair = await mcp_client.get_fair_price(mcp_url, resolved.ref)
 
     if cheapest is None or fair is None:
-        await stage("web_search", "no crawled listings; searching the live web")
+        await stage("web_search", "No dealer listings on file \u2014 searching the live market")
         web = await gemini.search_web_market(
             api_key=gemini_api_key, model=gemini_model, reference=resolved
         )
-        await stage("done", "complete")
+        await stage("done", "Done")
         return SearchResult(
             query=query,
             resolved=resolved,
@@ -129,12 +133,12 @@ async def run_search(
             + ("" if web else " A live web search didn't turn up sourced pricing either."),
         )
 
-    await stage("explain", f"{fair.n_listings} listings; composing the fair-price read")
+    await stage("explain", f"Weighing {fair.n_listings} current listings")
     explanation = await gemini.explain_fair_price(
         api_key=gemini_api_key, model=gemini_model, reference=resolved, cheapest=cheapest, fair=fair
     )
 
-    await stage("done", "complete")
+    await stage("done", "Done")
     return SearchResult(
         query=query, resolved=resolved, cheapest=cheapest, fair_price=fair, explanation=explanation
     )

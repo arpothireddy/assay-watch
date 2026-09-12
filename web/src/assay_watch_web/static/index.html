@@ -231,8 +231,6 @@ h1 .dim { color: var(--text-dim); }
 }
 .pipeline.show { display:flex; }
 .pl-text { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
-.pl-tag { color:var(--accent); }
-.pl-detail { color:var(--text-faint); }
 
 /* ── results ────────────────────────────────────────────── */
 .results { margin-top:34px; padding-bottom:90px; }
@@ -708,16 +706,6 @@ $('#filters-toggle').onclick = () => {
 };
 
 /* ── pipeline ──────────────────────────────────────────── */
-const LABELS = {
-  find_reference: 'find_reference',
-  list_tracked_references: 'list_tracked_references',
-  disambiguate: 'resolve_reference',
-  resolved: 'reference_resolved',
-  pricing: 'get_cheapest_listing · get_fair_price',
-  explain: 'explain_fair_price',
-  web_search: 'google_search (grounded)',
-  done: 'done',
-};
 const pipeline = $('#pipeline');
 const plText = $('#pl-text');
 const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -728,11 +716,11 @@ function resetPipeline() {
 }
 
 /* Rewrites the one line in place. The brief fade is what makes a swap read
-   as "moved on to the next thing" rather than a flicker. */
+   as "moved on to the next thing" rather than a flicker. The server sends a
+   finished sentence, so there is no tool-name mapping here to drift out of
+   step with what the pipeline actually does. */
 function addStage(stage, detail) {
-  const tool = LABELS[stage] || stage;
-  plText.innerHTML =
-    `<span class="pl-tag">[MCP]</span> ${esc(tool)} <span class="pl-detail">— ${esc(detail)}</span>`;
+  plText.textContent = detail;
   if (!REDUCED) {
     plText.animate(
       [{opacity: 0, transform: 'translateY(3px)'}, {opacity: 1, transform: 'none'}],
