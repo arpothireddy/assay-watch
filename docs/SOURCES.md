@@ -42,17 +42,46 @@ Crawling policy applies to every implemented source:
 | Craft + Tailored | craftandtailored.com | reachable | permits it | no explicit ban found |
 | Bulang & Sons | bulangandsons.com | reachable | permits it | no explicit ban found |
 | Collective Horology | collectivehorology.com | reachable | permits it | no explicit ban found |
+| WatchGuys | www.watchguys.com | _reported reachable_ | _reported to permit it_ | _pending_ |
+| SwissWatchExpo | www.swisswatchexpo.com | _reported reachable_ | _reported to permit it_ | _pending_ |
+| Theo & Harris | theoandharris.com | _reported reachable_ | _reported to permit it_ | _pending_ |
+| Oak & Oscar | oakandoscar.com | _reported reachable_ | _reported to permit it_ | _pending_ |
+| Autodromo | autodromo.com | _reported reachable_ | _reported to permit it_ | _pending_ |
+| Bremont | www.bremont.com | _reported reachable_ | _reported to permit it_ | _pending_ |
+| Halios Watches | halioswatches.com | _reported reachable_ | _reported to permit it_ | _pending_ |
 
 `/products.json` and `robots.txt` were checked 2026-09-09 (first four) and
 2026-09-11 (next three). "No explicit ban found" is a ToS skim, not a full
 legal review — it means no automated-access prohibition was spotted, not that
 a lawyer signed off. Flip a store back to `enabled: false` in
-`config/sources.yaml` if a closer read turns up a problem. The four marked
-`_pending_` haven't had even that skim yet.
+`config/sources.yaml` if a closer read turns up a problem. Every store marked
+`_pending_` hasn't had even that skim yet.
+
+**Provenance of the 2026-09-12 batch (the seven marked _reported_).** Those
+reachability and `robots.txt` checks were run and supplied by the project
+owner; they were not performed in the session that added the stores, which
+had no outbound network access and could not fetch a single `robots.txt` to
+confirm. They are recorded as *reported* rather than *verified* so that
+distinction survives in the record -- re-run them from an environment with
+network access and change the wording once they have been seen first-hand.
+All seven remain `_pending_` on terms of service, which is the check that
+has not happened at all.
 
 Currency note: Bulang & Sons is UK-based, recorded as `GBP`. Collective
-Horology's currency is unconfirmed and left unset in `config/sources.yaml`
-rather than guessed.
+Horology, Bremont (UK) and Halios (Canada) have unconfirmed presentment
+currencies and are left unset in `config/sources.yaml` rather than guessed.
+Currency is read from that file and never from the product payload, so a
+wrong guess prices a foreign listing as dollars and corrupts every median it
+lands in; unset means the row is counted as non-USD and excluded from
+pricing, which is visibly missing rather than quietly wrong.
+
+Coverage note: of the 2026-09-12 batch, only WatchGuys, SwissWatchExpo and
+(for vintage) Theo & Harris can match the tracked references -- they are
+multi-brand dealers carrying the modern Rolex/Patek/AP the catalogue is
+built around. Oak & Oscar, Autodromo, Bremont and Halios sell only their own
+watches and will return nothing for every tracked reference until the
+catalogue covers those brands. They are enabled because they were vetted,
+not because they close the gap.
 
 ### Checked and rejected
 

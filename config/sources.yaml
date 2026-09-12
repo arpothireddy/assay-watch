@@ -47,6 +47,49 @@ sources:
         base_url: "https://collectivehorology.com"
         enabled: true
 
+      # ── Added 2026-09-12 ──────────────────────────────────────────────
+      # Multi-brand dealers. These are the ones that address the coverage
+      # gap: the tracked references are modern Rolex/Patek/AP grails, and
+      # until now the enabled stores were mostly vintage and microbrand
+      # specialists that legitimately never stock them.
+      - name: "watchguys"
+        base_url: "https://www.watchguys.com"
+        currency: "USD"
+        enabled: true
+      - name: "swiss-watch-expo"
+        base_url: "https://www.swisswatchexpo.com"
+        currency: "USD"
+        enabled: true
+      - name: "theo-and-harris"
+        base_url: "https://theoandharris.com"
+        currency: "USD"
+        enabled: true
+
+      # Single-brand storefronts: each sells only its own watches, so none
+      # of them can match a tracked reference today. Enabled because they
+      # were vetted and cost little to poll, but they will return nothing
+      # until the reference catalogue covers these brands -- they are not
+      # part of the coverage fix.
+      - name: "oak-and-oscar"
+        base_url: "https://oakandoscar.com"
+        currency: "USD"
+        enabled: true
+      - name: "autodromo"
+        base_url: "https://autodromo.com"
+        currency: "USD"
+        enabled: true
+      # Currency deliberately unset for these two rather than guessed. It is
+      # read from this file, never from the product payload, so a wrong guess
+      # would price a GBP or CAD listing as dollars and corrupt every median
+      # it landed in. Unset means the row is counted as non-USD and excluded
+      # from pricing -- visibly missing beats quietly wrong.
+      - name: "bremont"          # UK-based; presentment currency unconfirmed
+        base_url: "https://www.bremont.com"
+        enabled: true
+      - name: "halios-watches"   # Canada-based; presentment currency unconfirmed
+        base_url: "https://halioswatches.com"
+        enabled: true
+
   # ── eBay APIs ──────────────────────────────────────────────────────────────
   # Registered but unconfigured until developer-program credentials are set
   # (ASSAY_EBAY_CLIENT_ID / ASSAY_EBAY_CLIENT_SECRET). While unconfigured the

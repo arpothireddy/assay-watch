@@ -179,3 +179,26 @@ def test_one_store_failure_does_not_block_others() -> None:
 
     assert len(listings) == 1
     assert listings[0].source_listing_id == "good:111"
+
+
+def test_an_unset_store_currency_is_carried_through_as_none() -> None:
+    """Currency comes from config, never from the product payload, so a store
+    whose presentment currency is unconfirmed must stay null all the way
+    through. The pricing queries only ever total ``price_currency = 'USD'``,
+    so a null is counted as non-USD and excluded -- whereas guessing 'USD' on
+    a GBP or CAD store would price those listings as dollars and corrupt
+    every median they landed in. Visibly missing beats quietly wrong."""
+    counter = {"pages": 0}
+    client = PoliteClient(
+        user_agent="assay-test", min_interval_seconds=0.0, transport=_handler(counter)
+    )
+    adapter = ShopifyAdapter(
+        client=client,
+        # No currency= -- exactly how bremont and halios-watches are declared.
+        stores=[ShopifyStore(name="unconfirmed", base_url="https://dealer.test")],
+    )
+
+    listings = adapter.fetch(Reference(ref="126610LN", brand="Rolex", model_name="Submariner Date"))
+    assert len(listings) == 1
+    assert listings[0].price_currency is None
+    assert listings[0].price_amount == Decimal("13500.00")
