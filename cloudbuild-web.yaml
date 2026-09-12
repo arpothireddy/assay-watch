@@ -108,23 +108,33 @@ steps:
         WEB_URL="$$(awk '/Service URL:/{u=$$NF} END{print u}' /tmp/web_deploy.log)"
         echo "Web staging URL: $$WEB_URL"
 
-        echo "Smoke test: health check (retrying -- the allUsers IAM binding"
+        # Hits "/" rather than the app's own /healthz: requests to /healthz
+        # on *.run.app started coming back with Google's edge 404 page --
+        # not FastAPI's JSON 404, so they never reached the container at all
+        # -- while "/" on the very same revision, in the same second, served
+        # 200. It survived new revisions, a delete/recreate, and a rename, so
+        # it tracks the path rather than the service (most likely edge abuse
+        # mitigation, after this loop hammered that one path a few hundred
+        # times while debugging). "/" exercises the same "is the container up
+        # and publicly routable" question, so nothing is lost here; /healthz
+        # stays in the app for external uptime monitoring.
+        echo "Smoke test: reachability (retrying -- the allUsers IAM binding"
         echo "that makes a freshly-deployed revision public can take longer"
         echo "than a few seconds to actually take effect, even after the"
         echo "setIamPolicy API call itself reports done)..."
         HEALTH_OK=""
         for attempt in $(seq 1 30); do
-          HTTP_CODE="$$(curl -s -o /tmp/healthz_body -w '%{http_code}' "$$WEB_URL/healthz" || echo curl_error)"
+          HTTP_CODE="$$(curl -s -o /dev/null -w '%{http_code}' "$$WEB_URL/" || echo curl_error)"
           if [ "$$HTTP_CODE" = "200" ]; then
             HEALTH_OK=1
-            echo "attempt $$attempt/30: HTTP 200, body: $$(cat /tmp/healthz_body)"
+            echo "attempt $$attempt/30: HTTP 200 -- service is up and public"
             break
           fi
-          echo "attempt $$attempt/30: HTTP $$HTTP_CODE, body: $$(cat /tmp/healthz_body 2>/dev/null || echo '<none>'), retrying in 10s..."
+          echo "attempt $$attempt/30: HTTP $$HTTP_CODE, retrying in 10s..."
           sleep 10
         done
         if [ -z "$$HEALTH_OK" ]; then
-          echo "FAIL: health check never returned HTTP 200 after 30 attempts (5 minutes)"
+          echo "FAIL: service never returned HTTP 200 after 30 attempts (5 minutes)"
           exit 1
         fi
 
