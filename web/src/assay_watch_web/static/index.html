@@ -36,7 +36,7 @@
      is what makes a panel look like it is unfolding rather than popping. */
   --island: cubic-bezier(0.32, 0.72, 0, 1);
   --island-close: cubic-bezier(0.4, 0, 0.2, 1);
-  --maxw: 1080px;
+  --maxw: 1240px;
 }
 [data-theme="light"] {
   --bg: #FAF9F7;
@@ -241,8 +241,8 @@ h1 .dim { color: var(--text-dim); }
 .card {
   background: var(--glass);
   border:1px solid var(--line);
-  border-radius:22px;
-  padding:28px;
+  border-radius:24px;
+  padding:34px;
   backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
   box-shadow: var(--shadow);
   animation: rise .55s var(--spring) both;
@@ -252,7 +252,7 @@ h1 .dim { color: var(--text-dim); }
 
 .card-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
 .brand { font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--text-faint); }
-.model { font-size:26px; font-weight:600; letter-spacing:-0.02em; margin-top:4px; }
+.model { font-size:31px; font-weight:600; letter-spacing:-0.02em; margin-top:4px; }
 .ref-chip {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px;
   color:var(--text-dim); border:1px solid var(--line); border-radius:8px; padding:4px 9px;
@@ -265,11 +265,11 @@ h1 .dim { color: var(--text-dim); }
 }
 .badge.live { color:var(--accent); border-color:var(--accent); background:var(--accent-soft); }
 
-.price-row { display:flex; gap:40px; flex-wrap:wrap; margin-top:26px; }
+.price-row { display:flex; gap:48px; flex-wrap:wrap; margin-top:32px; }
 .price-item .k { font-size:11px; text-transform:uppercase; letter-spacing:.16em; color:var(--text-faint); }
-.price-item .v { font-size:30px; font-weight:600; letter-spacing:-0.025em; margin-top:5px; font-variant-numeric: tabular-nums; }
+.price-item .v { font-size:37px; font-weight:600; letter-spacing:-0.03em; margin-top:7px; font-variant-numeric: tabular-nums; }
 .price-item .v.accent { color: var(--accent); }
-.delta { font-size:13px; margin-top:3px; color:var(--good); }
+.delta { font-size:13px; margin-top:6px; color:var(--good); }
 .delta.over { color:#D9705F; }
 
 /* Fair-value meter: real min/median/max from the crawl. Marker captions sit
@@ -277,15 +277,21 @@ h1 .dim { color: var(--text-dim); }
    collide -- they did when both hung underneath, worst exactly when the
    cheapest listing *is* the minimum and its caption stacked on top of the
    min figure. */
-.meter { margin-top:30px; padding-top:24px; }
+.meter { margin-top:44px; padding-top:26px; }
+.meter.has-stack { padding-top:46px; }
 .meter-track {
-  position:relative; height:5px; border-radius:99px;
+  position:relative; height:7px; border-radius:99px;
   background: linear-gradient(90deg, var(--good), var(--accent) 58%, #D9705F);
-  opacity:.45;
+  opacity:.68;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.25);
 }
-.marker { position:absolute; top:-6px; transform:translateX(-50%); }
-.marker .stem { width:2px; height:17px; background:var(--text); border-radius:2px; }
-.marker.median .stem { background: var(--text-dim); height:13px; margin-top:2px; }
+/* A zero-height anchor on the rail. The stem hangs off it absolutely rather
+   than giving the marker its height -- otherwise lengthening a stem to reach
+   a raised caption moves the caption down by the same amount and cancels the
+   lift, which is exactly what it did. */
+.marker { position:absolute; top:-5px; height:0; transform:translateX(-50%); }
+.marker .stem { position:absolute; top:0; width:2px; height:17px; background:var(--text); border-radius:2px; }
+.marker.median .stem { background: var(--text-dim); height:13px; top:2px; }
 .marker .lbl {
   position:absolute; bottom:22px; left:50%; transform:translateX(-50%);
   font-size:10.5px; white-space:nowrap; color:var(--text-dim); letter-spacing:.04em;
@@ -293,13 +299,45 @@ h1 .dim { color: var(--text-dim); }
 /* At the rail's extremes a centred caption would hang off the card edge. */
 .marker.at-start .lbl { left:0; transform:none; }
 .marker.at-end .lbl { left:auto; right:0; transform:none; }
-.meter-scale { display:flex; justify-content:space-between; margin-top:16px; font-size:11.5px; color:var(--text-faint); font-variant-numeric: tabular-nums; }
+/* Two markers close together -- a cheapest listing that is also near the
+   median -- print their captions on top of each other, and at the rail's
+   edge the clamp above puts both at left:0 exactly. The median is lifted to
+   its own line, with a stem long enough to still reach it. */
+/* A raised caption needs its stem to reach *up* to it. The stem hangs down
+   from its anchor, so growing it alone just pushed it through the scale
+   numbers below the rail -- it has to be pulled up by what it grew. */
+.marker.stacked .lbl { bottom:44px; }
+.marker.stacked .stem { top:-27px; height:39px; }
+.marker.median.stacked .stem { top:-25px; height:37px; }
+.meter-scale { display:flex; justify-content:space-between; margin-top:18px; font-size:11.5px; color:var(--text-faint); font-variant-numeric: tabular-nums; }
+
+/* The card's two halves: what the numbers are, and what they mean. Side by
+   side once there is room, because a single column left the page's whole
+   outer third empty while the analysis was pushed below the fold. */
+.card-body { display:grid; grid-template-columns:1fr; gap:0; }
+@media (min-width:940px) {
+  .card-body { grid-template-columns: minmax(0,1fr) minmax(0,0.92fr); gap:44px; }
+  .card-body .analysis { margin-top:0; padding-top:0; border-top:0; padding-left:44px; border-left:1px solid var(--line); }
+}
 
 /* Analysis: the prose the model writes, and the figures it is writing
    about. Both arrive live -- the prose streams token by token, the figures
    drop in one after another -- so the block fills in while you read it. */
 .analysis { margin-top:26px; padding-top:22px; border-top:1px solid var(--line); }
-.a-head { font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--text-faint); margin-bottom:14px; }
+.a-head {
+  display:flex; align-items:center; gap:9px; margin-bottom:16px;
+  font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--text-faint);
+}
+/* A live marker while the writing is happening, going quiet when it stops --
+   square rather than round to match the pipeline indicator's dots. Not the
+   square-step keyframe: that one translates a dot around a path, which reads
+   as motion only with the other three beside it. */
+.a-glyph {
+  width:7px; height:7px; border-radius:1.5px; background:var(--accent);
+  animation: a-pulse 1.4s ease-in-out infinite;
+}
+@keyframes a-pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:.35; transform:scale(.8); } }
+.analysis.settled .a-glyph { animation:none; background:var(--text-faint); opacity:.5; }
 .explain { color:var(--text-dim); font-size:14.5px; line-height:1.6; min-height:1.6em; }
 .stats { margin-top:20px; }
 .stat {
@@ -521,7 +559,7 @@ h1 .dim { color: var(--text-dim); }
 
   <section class="catalogue">
     <div class="cat-head">
-      <div class="cat-title">Browse tracked references</div>
+      <div class="cat-title">Popular models</div>
       <div class="cat-note" id="cat-note">Loading…</div>
     </div>
 
@@ -842,10 +880,14 @@ function meterHTML(cheapest, fair) {
   const pos = (v) => span <= 0 ? 50 : Math.min(100, Math.max(0, ((v - lo) / span) * 100));
   const edge = (p) => p < 12 ? ' at-start' : p > 88 ? ' at-end' : '';
   const pMed = pos(med), pCur = pos(cur);
+  // Close together the two captions overlap -- and at the rail's edge both
+  // get clamped to the same left:0, which stacks them exactly. Lift the
+  // median onto its own line whenever that would happen.
+  const stack = Math.abs(pMed - pCur) < 22;
   return `
-    <div class="meter">
+    <div class="meter${stack ? ' has-stack' : ''}">
       <div class="meter-track">
-        <div class="marker median${edge(pMed)}" style="left:${pMed.toFixed(1)}%">
+        <div class="marker median${edge(pMed)}${stack ? ' stacked' : ''}" style="left:${pMed.toFixed(1)}%">
           <div class="stem"></div><div class="lbl">median ${esc(money(med))}</div>
         </div>
         <div class="marker${edge(pCur)}" style="left:${pCur.toFixed(1)}%">
@@ -862,8 +904,8 @@ function meterHTML(cheapest, fair) {
 function analysisHTML(r, streaming) {
   const prose = streaming ? '' : esc(r.explanation || '');
   return `
-    <div class="analysis">
-      <div class="a-head">Analysis</div>
+    <div class="analysis${streaming ? '' : ' settled'}">
+      <div class="a-head"><span class="a-glyph"></span>Analysis</div>
       <div class="explain"${!streaming && !r.explanation ? ' hidden' : ''}><span id="stream-text">${prose}</span>${streaming ? '<span class="caret" id="caret"></span>' : ''}</div>
       <div class="stats">
         ${summaryRows(r).map(([k, v], i) => `
@@ -895,6 +937,8 @@ function renderResult(r, streaming) {
           </div>
         </div>
 
+        <div class="card-body">
+        <div>
         <div class="price-row">
           <div class="price-item">
             <div class="k">Cheapest listed</div>
@@ -913,8 +957,6 @@ function renderResult(r, streaming) {
         </div>
 
         ${meterHTML(r.cheapest, r.fair_price)}
-        ${analysisHTML(r, streaming)}
-
         <div class="actions">
           <a class="link-btn primary" href="${esc(r.cheapest.url)}" target="_blank" rel="noopener noreferrer">
             View at ${esc(r.cheapest.seller_name || 'dealer')} ↗
@@ -922,6 +964,9 @@ function renderResult(r, streaming) {
           <button class="link-btn" onclick="openModal()">
             See all ${esc(r.fair_price.n_listings)} listings
           </button>
+        </div>
+        </div>
+        ${analysisHTML(r, streaming)}
         </div>
       </div>`);
   } else if (r.choices && r.choices.length) {
@@ -1006,6 +1051,8 @@ function finalizeStream(r) {
   if (!text) { renderResult(r); return; }
   if (r.explanation) text.textContent = r.explanation;
   else text.parentElement.hidden = true;
+  const a = document.querySelector('.analysis');
+  if (a) a.classList.add('settled');
 }
 
 function appendStream(chunk) {
@@ -1146,7 +1193,7 @@ $('#form').onsubmit = (e) => { e.preventDefault(); runSearch($('#q').value); };
     CATALOGUE = await res.json();
     const withListings = CATALOGUE.filter(r => r.n_listings > 0).length;
     $('#cat-note').textContent =
-      `${CATALOGUE.length} references · ${withListings} with current listings`;
+      `${CATALOGUE.length} models · ${withListings} with current listings`;
     renderFilters();
     renderGrid();
   } catch (e) {
