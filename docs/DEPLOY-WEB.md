@@ -127,7 +127,10 @@ that compliance posture contractually.
 printf '%s' 'YOUR_SERPAPI_KEY' | gcloud secrets create assay-watch-serpapi-key \
   --data-file=- --replication-policy=automatic
 
-# 3. Let the MCP runtime service account read it.
+# 3. Let the MCP runtime service account read it. $PROJECT_ID is a Cloud
+#    Build substitution and is NOT set in a shell -- set it yourself, or the
+#    member resolves to "...@.iam.gserviceaccount.com" and the call 400s.
+PROJECT_ID="$(gcloud config get-value project)"
 gcloud secrets add-iam-policy-binding assay-watch-serpapi-key \
   --member="serviceAccount:assay-watch-mcp-runtime@$PROJECT_ID.iam.gserviceaccount.com" \
   --role=roles/secretmanager.secretAccessor
