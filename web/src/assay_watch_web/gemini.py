@@ -192,6 +192,7 @@ async def search_web_market(
 
     summary = (resp.text or "").strip()
     if not summary:
+        logger.warning("web market search for %s came back with no text", reference.ref)
         return None
 
     candidates = resp.candidates or []
@@ -210,8 +211,24 @@ async def search_web_market(
 
     # No grounding chunks means the model answered without actually
     # consulting search results -- unsourced price claims are worse than no
-    # answer, so drop it.
+    # answer, so drop it. Logged rather than dropped quietly: from outside,
+    # this looks identical to the call failing and to the search genuinely
+    # finding nothing, and the three want completely different fixes.
     if not sources:
+        logger.warning(
+            "web market search for %s answered ungrounded (%d chunk(s), %d query(ies)) "
+            "-- discarding; the model may not have run the search tool",
+            reference.ref,
+            len(chunks),
+            len(queries),
+        )
         return None
+
+    logger.info(
+        "web market search for %s grounded in %d source(s) via %d query(ies)",
+        reference.ref,
+        len(sources),
+        len(queries),
+    )
 
     return WebMarketSnapshot(summary=summary, sources=sources, queries=queries)

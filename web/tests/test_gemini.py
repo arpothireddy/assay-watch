@@ -241,3 +241,27 @@ async def test_a_failing_explanation_stream_yields_nothing(
         )
     ]
     assert chunks == []
+
+
+async def test_each_discard_reason_is_logged_distinctly(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """All three ways this returns None look identical from the outside, and
+    they want completely different fixes -- an unsupported tool, a model that
+    answered from memory, and a search that genuinely found nothing. The log
+    is the only place they can be told apart."""
+    caplog.set_level("WARNING", logger="assay_watch_web.gemini")
+
+    _stub_client(monkeypatch, RuntimeError("tool not supported for this model"))
+    assert await gemini.search_web_market(api_key="k", model="m", reference=_SUB) is None
+
+    _stub_client(monkeypatch, _Response("  ", [_Candidate(_Meta([], []))]))
+    assert await gemini.search_web_market(api_key="k", model="m", reference=_SUB) is None
+
+    _stub_client(monkeypatch, _Response("About $13k.", [_Candidate(_Meta([], ["q"]))]))
+    assert await gemini.search_web_market(api_key="k", model="m", reference=_SUB) is None
+
+    text = caplog.text
+    assert "web market search failed" in text
+    assert "no text" in text
+    assert "ungrounded" in text
