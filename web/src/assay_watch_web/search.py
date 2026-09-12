@@ -28,6 +28,7 @@ optional and never affects the result.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 
 from pydantic import BaseModel
@@ -35,6 +36,8 @@ from pydantic import BaseModel
 from . import gemini, mcp_client
 from .gemini import WebMarketSnapshot
 from .mcp_client import CatalogEntry, CheapestListing, FairPrice, WatchListing
+
+logger = logging.getLogger(__name__)
 
 StageCallback = Callable[[str, str], Awaitable[None]]
 TextCallback = Callable[[str], Awaitable[None]]
@@ -177,6 +180,18 @@ async def run_search(
             # Writing observations here would be the model talking about
             # figures that do not exist, which is the one thing it must not
             # do -- the honest dead end is better than an invented one.
+            #
+            # But a dead end should still say *why*. An unconfigured live
+            # search, a model that would not run the search tool, and a
+            # market with genuinely nothing on offer all render identically
+            # otherwise, and they need completely different fixes -- which
+            # has cost real time to work out by hand.
+            try:
+                status = await mcp_client.service_status(mcp_url)
+                if not status.live_search_configured:
+                    message += " Live retail lookup is not configured on this deployment."
+            except Exception:
+                logger.warning("could not read service status while explaining an empty result")
             await stage("done", "Done")
             return SearchResult(query=query, resolved=resolved, message=message)
 

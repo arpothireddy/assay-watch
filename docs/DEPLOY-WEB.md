@@ -104,6 +104,50 @@ gcloud builds triggers describe assay-watch-web-promote --format="value(approval
 ```
 Should print `True`.
 
+## 3b. Live listing search (optional)
+
+Off by default. Without it the MCP server reports live search unconfigured
+and `search_live_listings` returns nothing -- a supported state, not an
+error, but it means a reference with no crawled listings has nothing at all
+to show.
+
+It is SerpApi rather than fetching Google directly because Google's
+robots.txt disallows `/search` and its terms prohibit automated access, which
+`docs/SOURCES.md` rules out for every source. A licensed results API carries
+that compliance posture contractually.
+
+```bash
+# 1. Get a key: sign up at https://serpapi.com, then copy the private API key
+#    from https://serpapi.com/manage-api-key
+#    The free tier is ~100 searches/month, which is enough to prove it works
+#    but not to run the site on; paid plans start around $75/month.
+
+# 2. Put it in Secret Manager -- never in the repo, never in a substitution
+#    (build substitutions appear in build logs).
+printf '%s' 'YOUR_SERPAPI_KEY' | gcloud secrets create assay-watch-serpapi-key \
+  --data-file=- --replication-policy=automatic
+
+# 3. Let the MCP runtime service account read it.
+gcloud secrets add-iam-policy-binding assay-watch-serpapi-key \
+  --member="serviceAccount:assay-watch-mcp-runtime@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role=roles/secretmanager.secretAccessor
+
+# 4. Point the trigger at it. Until this is set the deploy simply skips the
+#    secret and logs "Live listing search: disabled".
+gcloud builds triggers update assay-watch-web-deploy \
+  --update-substitutions=_SERPAPI_KEY_SECRET=assay-watch-serpapi-key
+```
+
+Then redeploy and confirm from the app rather than by inspection:
+
+```bash
+curl -s https://<web-staging-url>/api/diagnostics
+# "live_search_configured": true
+```
+
+To turn it back off, clear the substitution: the deploy drops the secret and
+the service returns to reporting live search unconfigured.
+
 ## 4. First deploy
 
 ```bash
@@ -143,6 +187,14 @@ Or do the same from the Cloud Build console -- open the build, click
 ## Testing checklist
 
 ```bash
+# What is actually configured, end to end -- ask this first when a
+# capability is returning nothing, since an unconfigured key, a model that
+# will not run a tool, and an empty crawl all look identical from the page:
+curl -s https://<web-staging-url>/api/diagnostics
+
+# Which build is serving:
+curl -s https://<web-staging-url>/api/version
+
 # Staging URLs:
 gcloud run services describe assay-watch-web-staging2 --region=us-central1 --format='value(status.url)'
 gcloud run services describe assay-watch-mcp-staging2 --region=us-central1 --format='value(status.url)'

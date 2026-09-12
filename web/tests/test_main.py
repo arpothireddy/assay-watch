@@ -6,7 +6,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from assay_watch_web import main, orchestrator
-from assay_watch_web.mcp_client import CatalogueRow, CheapestListing, Specs, WatchListing
+from assay_watch_web.mcp_client import (
+    CatalogueRow,
+    CheapestListing,
+    ServiceStatus,
+    Specs,
+    WatchListing,
+)
 from assay_watch_web.search import SearchResult
 
 
@@ -313,3 +319,44 @@ def test_ask_endpoint_reports_the_tools_the_model_chose(
         "tools_used": ["x", "y"],
         "truncated": False,
     }
+
+
+def test_diagnostics_reports_what_is_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Three capabilities can each return nothing for reasons that look
+    identical from the page. This says which one you actually have."""
+
+    async def status(url: str) -> ServiceStatus:
+        return ServiceStatus(
+            live_search_configured=False,
+            live_search_detail="SERPAPI_KEY is not set on this service",
+            tracked_references=29,
+        )
+
+    monkeypatch.setattr(main, "service_status", status)
+
+    client = TestClient(main.app)
+    body = client.get("/api/diagnostics").json()
+    assert body["mcp_reachable"] is True
+    assert body["live_search_configured"] is False
+    assert "SERPAPI_KEY" in body["live_search_detail"]
+    assert body["tracked_references"] == 29
+    assert body["build"] == "dev"
+
+
+def test_diagnostics_says_so_when_the_mcp_server_is_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unreachable MCP server is the single failure that makes every other
+    capability look broken, so it must be distinguishable at a glance."""
+
+    async def boom(url: str) -> ServiceStatus:
+        raise ConnectionError("no route to host")
+
+    monkeypatch.setattr(main, "service_status", boom)
+
+    client = TestClient(main.app)
+    body = client.get("/api/diagnostics").json()
+    assert body["mcp_reachable"] is False
+    assert body["mcp_error"] == "ConnectionError"
+    # The internal hostname must not ride out in the response.
+    assert "no route to host" not in str(body)

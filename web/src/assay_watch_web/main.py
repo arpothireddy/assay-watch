@@ -33,6 +33,7 @@ from .mcp_client import (
     catalogue_overview,
     list_listings,
     search_live_listings,
+    service_status,
 )
 from .search import SearchResult, run_search
 from .settings import get_settings
@@ -75,6 +76,34 @@ def version() -> dict[str, str]:
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok", "build": get_settings().build_sha}
+
+
+@app.get("/api/diagnostics")
+async def diagnostics() -> dict[str, Any]:
+    """What is actually configured, end to end.
+
+    Three capabilities can each return nothing for reasons that look
+    identical from the page -- an unconfigured key, a model that will not run
+    a tool, an empty crawl -- and each needs a different fix. This says which
+    one you have without anybody reading a deploy script.
+    """
+    settings = get_settings()
+    out: dict[str, Any] = {
+        "build": settings.build_sha,
+        "gemini_model": settings.gemini_model,
+        "mcp_server_url_set": bool(settings.mcp_server_url),
+    }
+    try:
+        status = await service_status(settings.mcp_server_url)
+        out["mcp_reachable"] = True
+        out["live_search_configured"] = status.live_search_configured
+        out["live_search_detail"] = status.live_search_detail
+        out["tracked_references"] = status.tracked_references
+    except Exception as exc:
+        logger.exception("diagnostics could not reach the MCP server")
+        out["mcp_reachable"] = False
+        out["mcp_error"] = f"{type(exc).__name__}"
+    return out
 
 
 @app.get("/api/catalogue")

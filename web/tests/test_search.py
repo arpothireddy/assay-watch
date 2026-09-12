@@ -574,3 +574,85 @@ async def test_retail_listings_alone_are_still_an_answer(
     assert result.live_listings == live
     assert result.web_market is None
     assert result.explanation is None
+
+
+async def test_an_empty_result_says_live_search_is_unconfigured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dead end should say why. An unconfigured lookup and a market with
+    nothing on offer render identically otherwise, and need different fixes."""
+
+    async def find_reference(url: str, query: str) -> list[ReferenceMatch]:
+        return [ReferenceMatch(**_SUB.model_dump(), confidence="exact")]
+
+    async def status(url: str) -> mcp_client.ServiceStatus:
+        return mcp_client.ServiceStatus(
+            live_search_configured=False,
+            live_search_detail="SERPAPI_KEY is not set",
+            tracked_references=29,
+        )
+
+    monkeypatch.setattr(mcp_client, "find_reference", find_reference)
+    monkeypatch.setattr(mcp_client, "get_cheapest_listing", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(mcp_client, "get_fair_price", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(mcp_client, "search_live_listings", lambda *a, **k: _returns([]))
+    monkeypatch.setattr(mcp_client, "service_status", status)
+    monkeypatch.setattr(gemini, "search_web_market", lambda *a, **k: _returns(None))
+
+    result = await search.run_search(
+        "126610LN", mcp_url="http://mcp", gemini_api_key="k", gemini_model="m"
+    )
+    assert result.message
+    assert "not configured" in result.message
+
+
+async def test_a_configured_live_search_finding_nothing_does_not_blame_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def find_reference(url: str, query: str) -> list[ReferenceMatch]:
+        return [ReferenceMatch(**_SUB.model_dump(), confidence="exact")]
+
+    async def status(url: str) -> mcp_client.ServiceStatus:
+        return mcp_client.ServiceStatus(
+            live_search_configured=True,
+            live_search_detail="SerpApi key present",
+            tracked_references=29,
+        )
+
+    monkeypatch.setattr(mcp_client, "find_reference", find_reference)
+    monkeypatch.setattr(mcp_client, "get_cheapest_listing", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(mcp_client, "get_fair_price", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(mcp_client, "search_live_listings", lambda *a, **k: _returns([]))
+    monkeypatch.setattr(mcp_client, "service_status", status)
+    monkeypatch.setattr(gemini, "search_web_market", lambda *a, **k: _returns(None))
+
+    result = await search.run_search(
+        "126610LN", mcp_url="http://mcp", gemini_api_key="k", gemini_model="m"
+    )
+    assert result.message and "not configured" not in result.message
+
+
+async def test_a_status_lookup_failing_does_not_break_the_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The explanation of an empty result must not be able to fail the
+    result itself."""
+
+    async def find_reference(url: str, query: str) -> list[ReferenceMatch]:
+        return [ReferenceMatch(**_SUB.model_dump(), confidence="exact")]
+
+    async def boom(url: str) -> mcp_client.ServiceStatus:
+        raise ConnectionError("down")
+
+    monkeypatch.setattr(mcp_client, "find_reference", find_reference)
+    monkeypatch.setattr(mcp_client, "get_cheapest_listing", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(mcp_client, "get_fair_price", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(mcp_client, "search_live_listings", lambda *a, **k: _returns([]))
+    monkeypatch.setattr(mcp_client, "service_status", boom)
+    monkeypatch.setattr(gemini, "search_web_market", lambda *a, **k: _returns(None))
+
+    result = await search.run_search(
+        "126610LN", mcp_url="http://mcp", gemini_api_key="k", gemini_model="m"
+    )
+    assert result.resolved is not None
+    assert result.message

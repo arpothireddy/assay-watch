@@ -88,6 +88,12 @@ class WatchListing(BaseModel):
     source: Literal["google_shopping", "web_search", "shopify_api"]
 
 
+class ServiceStatus(BaseModel):
+    live_search_configured: bool
+    live_search_detail: str
+    tracked_references: int
+
+
 class MCPError(Exception):
     """The MCP server reachable but a tool call itself failed."""
 
@@ -153,3 +159,8 @@ async def search_live_listings(
         server_url, "search_live_listings_tool", {"query": query, "source": source}
     )
     return [WatchListing.model_validate(x) for x in (data or [])]
+
+
+async def service_status(server_url: str) -> ServiceStatus:
+    data = await _call_tool(server_url, "get_service_status_tool", {})
+    return ServiceStatus.model_validate(data)

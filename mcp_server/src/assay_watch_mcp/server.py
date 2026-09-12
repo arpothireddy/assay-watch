@@ -20,6 +20,16 @@ from .queries import FairPrice, Listing
 from .settings import get_settings
 
 
+class ServiceStatus(BaseModel):
+    """What this server has actually been given, as opposed to what it can do
+    in principle. Exists so "why is there no live search" is answerable by
+    asking the service rather than by reading a deploy script."""
+
+    live_search_configured: bool
+    live_search_detail: str
+    tracked_references: int
+
+
 class CatalogueRow(BaseModel):
     """A tracked reference with everything a catalogue view needs: curated
     attributes for filtering, live counts and prices for sorting. Prices are
@@ -147,6 +157,24 @@ def get_fair_price_tool(reference: str) -> FairPrice | None:
     null if there's no current USD listing for this reference."""
     settings = get_settings()
     return queries.get_fair_price(_engine(settings.database_url), reference)
+
+
+@server.tool()
+def get_service_status_tool() -> ServiceStatus:
+    """What this server has configured. Use it to explain a capability that is
+    returning nothing: an unconfigured live search and a live search that
+    genuinely found nothing look identical from the outside, and they need
+    completely different fixes."""
+    fetcher = _fetcher()
+    return ServiceStatus(
+        live_search_configured=fetcher.configured,
+        live_search_detail=(
+            "SerpApi key present"
+            if fetcher.configured
+            else "SERPAPI_KEY is not set on this service, so live lookups return nothing"
+        ),
+        tracked_references=len(_catalog()),
+    )
 
 
 @server.tool()

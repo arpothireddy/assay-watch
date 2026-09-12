@@ -26,6 +26,10 @@ substitutions:
   # state that hostname had accumulated.
   _MCP_STAGING: assay-watch-mcp-staging2
   _WEB_STAGING: assay-watch-web-staging2
+  # Optional. Create the secret and set this to its name to turn on live
+  # listing lookups; left empty the MCP service simply reports live search
+  # unconfigured and returns nothing, which is a supported state.
+  _SERPAPI_KEY_SECRET: ""
   _MCP_RUNTIME_SA: assay-watch-mcp-runtime
   _WEB_RUNTIME_SA: assay-watch-web-runtime
   _READER_DB_SECRET: assay-watch-reader-db-url
@@ -78,12 +82,23 @@ steps:
         WEB_SA="${_WEB_RUNTIME_SA}@$PROJECT_ID.iam.gserviceaccount.com"
 
         echo "Deploying ${_MCP_STAGING}..."
+        # Built up rather than inlined: naming a secret that does not exist
+        # fails the deploy, so the SerpApi key is only passed when one has
+        # actually been configured.
+        MCP_SECRETS="ASSAY_READER_DATABASE_URL=${_READER_DB_SECRET}:latest"
+        if [ -n "${_SERPAPI_KEY_SECRET}" ]; then
+          MCP_SECRETS="$$MCP_SECRETS,SERPAPI_KEY=${_SERPAPI_KEY_SECRET}:latest"
+          echo "Live listing search: enabled via secret ${_SERPAPI_KEY_SECRET}"
+        else
+          echo "Live listing search: disabled (no _SERPAPI_KEY_SECRET given)"
+        fi
+
         gcloud run deploy ${_MCP_STAGING} \
           --project=$PROJECT_ID --region=${_REGION} \
           --image="$$MCP_IMAGE" \
           --service-account="$$MCP_SA" \
           --allow-unauthenticated --port=8080 \
-          --set-secrets="ASSAY_READER_DATABASE_URL=${_READER_DB_SECRET}:latest" \
+          --set-secrets="$$MCP_SECRETS" \
           2>&1 | tee /tmp/mcp_deploy.log
 
         # Parsed from deploy's own report, not a separate `describe` call:
