@@ -72,14 +72,17 @@ references:
     brand: "Patek Philippe"
     model_name: "Nautilus"
     # Bare "5711" dropped: shared with other material/dial variants of the
-    # same base number (5711R rose gold, special editions, ...).
-    search_aliases: ["5711/1A", "5711 1A"]
+    # same base number (5711R rose gold, special editions, ...). "5711A" is
+    # the common dealer shorthand for this same steel reference -- it stays
+    # specific because the material letter is still attached.
+    search_aliases: ["5711/1A", "5711 1A", "5711A"]
     enabled: true
   - ref: "5712/1A"
     brand: "Patek Philippe"
     model_name: "Nautilus Moon Phase"
-    # Bare "5712" dropped -- same reasoning as 5711/1A above.
-    search_aliases: ["5712/1A", "5712 1A"]
+    # Bare "5712" dropped -- same reasoning as 5711/1A above, "5712A"
+    # added for the same reason.
+    search_aliases: ["5712/1A", "5712 1A", "5712A"]
     enabled: true
   - ref: "15500ST"
     brand: "Audemars Piguet"

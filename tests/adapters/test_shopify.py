@@ -6,7 +6,7 @@ import httpx
 
 from assay_watch.adapters.base import HealthStatus, Reference
 from assay_watch.adapters.http import PoliteClient
-from assay_watch.adapters.shopify import ShopifyAdapter, ShopifyStore
+from assay_watch.adapters.shopify import ShopifyAdapter, ShopifyStore, _compact
 from tests.conftest import make_transport
 
 _PRODUCTS = [
@@ -67,6 +67,68 @@ def test_no_match_returns_empty() -> None:
     adapter = _adapter({"pages": 0})
     ref = Reference(ref="5711/1A", brand="Patek", model_name="Nautilus", search_aliases=[])
     assert adapter.fetch(ref) == []
+
+
+def _matches(product: dict[str, object], ref: str, *aliases: str) -> bool:
+    adapter = ShopifyAdapter.__new__(ShopifyAdapter)
+    reference = Reference(ref=ref, brand="b", model_name="m", search_aliases=list(aliases) or [ref])
+    return adapter._matches(product, [_compact(t) for t in reference.all_terms()])
+
+
+def _product(title: str, **kw: object) -> dict[str, object]:
+    return {
+        "title": title,
+        "vendor": kw.get("vendor", ""),
+        "product_type": "Watches",
+        "handle": title.lower().replace(" ", "-"),
+        "tags": kw.get("tags", []),
+        "variants": [{"sku": kw.get("sku", ""), "title": "Default Title"}],
+    }
+
+
+# Every case below is a real row this pulled into production: the reference
+# on the right was recorded as matching the listing on the left.
+def test_price_tag_and_material_do_not_combine_into_a_reference() -> None:
+    """The bug that made this matter. A $15,500 Datejust tagged "15500" and
+    "Stainless Steel" fused to "...15500stainlesssteel..." and registered as
+    an Audemars Piguet Royal Oak 15500ST -- so the site reported a Datejust
+    as the cheapest Royal Oak on the market."""
+    datejust = _product("Rolex Datejust 41 126333", tags=["15500", "Stainless Steel"])
+    assert not _matches(datejust, "15500ST")
+
+    kermit = _product("Rolex Submariner Kermit 16610LV", tags=["15400", "Steel"])
+    assert not _matches(kermit, "15400ST")
+
+    iwc = _product("IWC Portuguese Perpetual Calendar 42", tags=["15500", "Steel"])
+    assert not _matches(iwc, "15500ST")
+
+
+def test_reference_may_not_start_or_end_mid_token() -> None:
+    assert not _matches(_product("Malo Black Tungsten Wedding Ring", sku="57111A2345"), "5711/1A")
+    assert not _matches(_product("Tag Heuer 2000 Exclusive WN1353"), "5711/1A")
+
+
+def test_a_neighbouring_generation_is_not_the_tracked_reference() -> None:
+    """116710BLNR is the previous Batman and 116520 the previous Daytona --
+    different watches at different prices, so folding them in would skew the
+    fair price for the references we do track."""
+    assert not _matches(_product("2015 Rolex GMT II (Ref. 116710 BLNR) Batman"), "126710BLNR")
+    assert not _matches(_product("2013 Rolex Daytona 116520 White Dial"), "116500LN")
+
+
+def test_references_still_match_however_dealers_write_them() -> None:
+    assert _matches(_product("2016 Rolex Ceramic Daytona 116500LN Black Dial"), "116500LN")
+    assert _matches(_product("Rolex Oyster Perpetual 41 124300"), "124300")
+    # Separators inside the reference itself must not break the match.
+    assert _matches(
+        _product("OMEGA Speedmaster Moonwatch 310.30.42.50.01.002"), "310.30.42.50.01.002"
+    )
+    # A reference split across tokens in the title.
+    assert _matches(_product("Rolex Submariner Date 126610 LN"), "126610LN", "126610LN")
+    # A longer factory reference string that begins with ours.
+    assert _matches(_product("AP Royal Oak 15500ST.OO.1220ST.01"), "15500ST")
+    # A reference living in the SKU rather than the title.
+    assert _matches(_product("Rolex Submariner", sku="126610LN"), "126610LN")
 
 
 def test_catalog_is_fetched_once_across_references() -> None:

@@ -5,10 +5,20 @@ at a public ``/products.json`` endpoint — no HTML parsing, no JS, no anti-bot
 fight. The endpoint has no server-side search, so we fetch a store's catalogue
 once per run (cached) and match products to a reference client-side.
 
-The matching here is deliberately crude — a normalized substring check against
-the reference and its aliases. It only *associates* a listing with the reference
-being queried; it does not extract or normalize anything (that is Phase 2). Over-
-inclusion is acceptable and is recorded via ``search_reference`` on each row.
+Matching associates a listing with the reference being queried; it does not
+extract or normalize anything (that is Phase 2). Some over-inclusion is
+acceptable and is recorded via ``search_reference`` on each row -- but only
+over-inclusion a human would call arguable, not the kind below.
+
+A reference has to line up with whole words. An earlier version lowercased
+each field, deleted every non-alphanumeric character, and substring-searched
+the concatenation, which went wrong two ways at once. Deleting the
+separators let a term straddle a field boundary: a $15,500 Rolex Datejust
+tagged ``15500`` / ``Stainless Steel`` fused to ``...15500stainlesssteel...``
+and so "contained" ``15500ST``, an Audemars Piguet Royal Oak. Unbounded
+substring search then let a term land mid-token as well. Between them,
+whichever watch happened to cost $15,500 was filed as a Royal Oak, and the
+site quoted it as the cheapest one on the market.
 """
 
 from __future__ import annotations
@@ -25,12 +35,38 @@ from .http import PoliteClient
 
 log = get_logger(__name__)
 
-_NON_ALNUM = re.compile(r"[^a-z0-9]+")
+_ALNUM_RUN = re.compile(r"[a-z0-9]+")
 
 
-def _normalize(text: str) -> str:
-    """Lowercase and strip everything but letters and digits."""
-    return _NON_ALNUM.sub("", text.lower())
+def _tokens(text: str) -> list[str]:
+    """Lowercase alphanumeric runs. Punctuation separates rather than
+    vanishing, so ``5711/1A`` is ``["5711", "1a"]`` -- two tokens that stay
+    two tokens."""
+    return _ALNUM_RUN.findall(text.lower())
+
+
+def _compact(text: str) -> str:
+    return "".join(_tokens(text))
+
+
+def _spans_whole_tokens(tokens: list[str], term: str) -> bool:
+    """True when ``term`` is spelled exactly by consecutive whole tokens.
+
+    References are written inconsistently across dealers -- ``126610LN``,
+    ``126610 LN``, ``310.30.42.50.01.002`` -- so a term is allowed to run
+    across several tokens. What it may not do is start or stop mid-token:
+    that is the difference between matching ``15500ST`` and matching the
+    ``15500`` in a price tag followed by a word starting with "st".
+    """
+    for start in range(len(tokens)):
+        buf = ""
+        for token in tokens[start:]:
+            buf += token
+            if buf == term:
+                return True
+            if not term.startswith(buf):
+                break
+    return False
 
 
 class ShopifyStore(BaseModel):
@@ -94,8 +130,15 @@ class ShopifyAdapter(SourceAdapter):
         return products
 
     @staticmethod
-    def _haystack(product: dict[str, Any]) -> str:
-        parts: list[str] = [
+    def _match_fields(product: dict[str, Any]) -> list[list[str]]:
+        """Each searchable field tokenized on its own.
+
+        Kept as separate lists rather than one merged stream: a reference is
+        only a match if it appears within a single field. Two adjacent fields
+        must never combine to spell one -- that is exactly how a price tag
+        and a material name together spelled a reference number.
+        """
+        fields: list[str] = [
             str(product.get("title", "")),
             str(product.get("vendor", "")),
             str(product.get("product_type", "")),
@@ -103,18 +146,21 @@ class ShopifyAdapter(SourceAdapter):
         ]
         tags = product.get("tags")
         if isinstance(tags, list):
-            parts.extend(str(t) for t in tags)
+            fields.extend(str(t) for t in tags)
         elif isinstance(tags, str):
-            parts.append(tags)
+            fields.append(tags)
         for variant in product.get("variants", []) or []:
             if isinstance(variant, dict):
-                parts.append(str(variant.get("sku", "")))
-                parts.append(str(variant.get("title", "")))
-        return _normalize(" ".join(parts))
+                fields.append(str(variant.get("sku", "")))
+                fields.append(str(variant.get("title", "")))
+        return [_tokens(f) for f in fields if f]
 
-    def _matches(self, product: dict[str, Any], normalized_terms: list[str]) -> bool:
-        haystack = self._haystack(product)
-        return any(term and term in haystack for term in normalized_terms)
+    def _matches(self, product: dict[str, Any], compact_terms: list[str]) -> bool:
+        fields = self._match_fields(product)
+        return any(
+            term and any(_spans_whole_tokens(tokens, term) for tokens in fields)
+            for term in compact_terms
+        )
 
     def _to_listing(self, store: ShopifyStore, product: dict[str, Any]) -> RawListing:
         variants = product.get("variants") or []
@@ -139,7 +185,7 @@ class ShopifyAdapter(SourceAdapter):
         )
 
     def fetch(self, reference: Reference) -> list[RawListing]:
-        terms = [_normalize(t) for t in reference.all_terms()]
+        terms = [_compact(t) for t in reference.all_terms()]
         listings: list[RawListing] = []
         for store in self._stores:
             try:
