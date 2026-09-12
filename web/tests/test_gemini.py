@@ -60,9 +60,16 @@ class _Response:
         self.candidates = candidates
 
 
-def _stub_client(monkeypatch: pytest.MonkeyPatch, resp: Any) -> None:
+def _stub_client(monkeypatch: pytest.MonkeyPatch, resp: Any, extracted: Any = None) -> None:
+    """``resp`` answers the grounded search; ``extracted`` answers the
+    follow-up extraction call, which only happens if the first was grounded."""
+    calls = {"n": 0}
+
     class _Models:
         async def generate_content(self, **kwargs: object) -> Any:
+            calls["n"] += 1
+            if calls["n"] > 1:
+                return extracted if extracted is not None else _Parsed(_Offers([]))
             if isinstance(resp, Exception):
                 raise resp
             return resp
@@ -265,3 +272,118 @@ async def test_each_discard_reason_is_logged_distinctly(
     assert "web market search failed" in text
     assert "no text" in text
     assert "ungrounded" in text
+
+
+def _Offers(offers: list[gemini.WebOffer]) -> Any:
+    """The real structured-output model -- resolve_reference and this both
+    isinstance-check what came back, so a stand-in would pass a test the
+    production code would reject."""
+    return gemini._ExtractedOffers(offers=offers)
+
+
+def _grounded(text: str, url: str = "https://x.test/a") -> _Response:
+    return _Response(text, [_Candidate(_Meta([_Chunk(_Web(url, "A listing", "x.test"))], ["q"]))])
+
+
+async def test_offers_are_extracted_from_the_grounded_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_client(
+        monkeypatch,
+        _grounded("One dealer lists it at $12,500; another asks $14,000."),
+        _Parsed(
+            _Offers(
+                [
+                    gemini.WebOffer(
+                        price_text="$12,500",
+                        merchant="A Dealer",
+                        url="https://x.test/a",
+                        condition="pre-owned",
+                    )
+                ]
+            )
+        ),
+    )
+
+    out = await gemini.search_web_market(api_key="k", model="m", reference=_SUB)
+    assert out is not None
+    assert [o.price_text for o in out.offers] == ["$12,500"]
+    assert out.offers[0].merchant == "A Dealer"
+
+
+async def test_an_offer_priced_outside_the_grounded_text_is_dropped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The extraction step runs without tools, so a plausible invented figure
+    with a real URL attached is exactly the failure this must not ship."""
+    _stub_client(
+        monkeypatch,
+        _grounded("One dealer lists it at $12,500."),
+        _Parsed(
+            _Offers(
+                [
+                    gemini.WebOffer(price_text="$12,500", url="https://x.test/a"),
+                    gemini.WebOffer(price_text="$13,750", url="https://x.test/a"),
+                ]
+            )
+        ),
+    )
+
+    out = await gemini.search_web_market(api_key="k", model="m", reference=_SUB)
+    assert out is not None
+    assert [o.price_text for o in out.offers] == ["$12,500"]
+
+
+async def test_an_offer_citing_a_page_the_search_never_returned_is_dropped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_client(
+        monkeypatch,
+        _grounded("One dealer lists it at $12,500.", url="https://x.test/a"),
+        _Parsed(_Offers([gemini.WebOffer(price_text="$12,500", url="https://invented.test/deal")])),
+    )
+
+    out = await gemini.search_web_market(api_key="k", model="m", reference=_SUB)
+    assert out is not None
+    assert out.offers == []
+
+
+async def test_extraction_failing_still_leaves_the_summary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Offers are an enrichment of a snapshot that is already useful."""
+    _stub_client(
+        monkeypatch,
+        _grounded("Asking prices cluster near $12,500."),
+        _Parsed("not the schema"),
+    )
+
+    out = await gemini.search_web_market(api_key="k", model="m", reference=_SUB)
+    assert out is not None
+    assert out.summary == "Asking prices cluster near $12,500."
+    assert out.offers == []
+
+
+async def test_no_extraction_call_is_made_for_an_ungrounded_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The answer is about to be discarded; paying for a second call to
+    structure it would be spending money on something nobody will see."""
+    calls = {"n": 0}
+
+    class _Models:
+        async def generate_content(self, **kwargs: object) -> Any:
+            calls["n"] += 1
+            return _Response("About $13,000.", [_Candidate(_Meta([], ["q"]))])
+
+    class _Aio:
+        models = _Models()
+
+    class _Client:
+        def __init__(self, **kwargs: object) -> None:
+            self.aio = _Aio()
+
+    monkeypatch.setattr("assay_watch_web.gemini.genai.Client", _Client)
+
+    assert await gemini.search_web_market(api_key="k", model="m", reference=_SUB) is None
+    assert calls["n"] == 1
