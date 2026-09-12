@@ -27,6 +27,7 @@ _FAIR = FairPrice(
     max_price="14000.00",
     n_listings=3,
     excluded_other_currency=0,
+    excluded_implausible=0,
 )
 _WEB = WebMarketSnapshot(
     summary="Asking prices cluster around $13k on the grey market.",

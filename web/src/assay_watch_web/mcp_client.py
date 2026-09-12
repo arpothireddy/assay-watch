@@ -46,6 +46,7 @@ class FairPrice(BaseModel):
     max_price: str
     n_listings: int
     excluded_other_currency: int
+    excluded_implausible: int
 
 
 class MCPError(Exception):
@@ -92,3 +93,10 @@ async def get_cheapest_listing(server_url: str, reference: str) -> CheapestListi
 async def get_fair_price(server_url: str, reference: str) -> FairPrice | None:
     data = await _call_tool(server_url, "get_fair_price_tool", {"reference": reference})
     return FairPrice(**data) if data is not None else None
+
+
+async def list_listings(server_url: str, reference: str) -> list[CheapestListing]:
+    """Every current listing behind the headline numbers, cheapest first.
+    Same shape as the cheapest one because it is the same rows."""
+    data = await _call_tool(server_url, "list_listings_tool", {"reference": reference})
+    return [CheapestListing(**item) for item in data or []]

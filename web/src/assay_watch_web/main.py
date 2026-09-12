@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .mcp_client import CatalogEntry, list_tracked_references
+from .mcp_client import CatalogEntry, CheapestListing, list_listings, list_tracked_references
 from .search import SearchResult, run_search
 from .settings import get_settings
 
@@ -54,6 +54,15 @@ async def references() -> list[CatalogEntry]:
     entry here is something the crawler actually looks for."""
     settings = get_settings()
     return await list_tracked_references(settings.mcp_server_url)
+
+
+@app.get("/api/listings/{reference:path}")
+async def listings(reference: str) -> list[CheapestListing]:
+    """The listings behind a reference's headline numbers. Path is declared
+    ``:path`` because references contain slashes -- Patek's 5711/1A would
+    otherwise 404 as a two-segment route."""
+    settings = get_settings()
+    return await list_listings(settings.mcp_server_url, reference)
 
 
 @app.post("/api/search")

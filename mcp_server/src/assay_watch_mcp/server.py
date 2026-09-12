@@ -14,7 +14,7 @@ from sqlalchemy.engine import Engine
 
 from . import queries
 from .catalog import CatalogEntry, Reference, ReferenceMatch, find_reference, load_catalog
-from .queries import CheapestListing, FairPrice
+from .queries import FairPrice, Listing
 from .settings import get_settings
 
 server = MCPServer(
@@ -60,13 +60,25 @@ def list_tracked_references_tool() -> list[CatalogEntry]:
 
 
 @server.tool()
-def get_cheapest_listing_tool(reference: str) -> CheapestListing | None:
+def get_cheapest_listing_tool(reference: str) -> Listing | None:
     """The single lowest-priced current USD listing for a tracked reference,
     from the most recent crawl. Returns null if there's no current USD
     listing for this reference -- call find_reference first if unsure the
     reference is actually tracked."""
     settings = get_settings()
     return queries.get_cheapest_listing(_engine(settings.database_url), reference)
+
+
+@server.tool()
+def list_listings_tool(reference: str) -> list[Listing]:
+    """Every current USD listing for a tracked reference, cheapest first --
+    the listings the cheapest-price and fair-price answers are computed
+    from. Use it to show the working behind those numbers, or to compare
+    what individual dealers are asking. Implausibly priced rows (deposits,
+    parts, accessories that carry the reference number) are already
+    excluded. Returns an empty list if nothing current is on file."""
+    settings = get_settings()
+    return queries.list_listings(_engine(settings.database_url), reference)
 
 
 @server.tool()

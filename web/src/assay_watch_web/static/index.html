@@ -307,6 +307,24 @@ h1 .dim { color: var(--text-dim); }
 .spec .sv { color:var(--text); text-align:right; word-break:break-word; font-variant-numeric: tabular-nums; }
 .modal-foot { margin-top:24px; display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; }
 
+/* every-listing table */
+.rows { margin-top:18px; }
+.row {
+  display:flex; align-items:baseline; gap:14px; text-decoration:none;
+  padding:12px 13px; border:1px solid var(--line); border-radius:12px;
+  margin-bottom:8px; transition: all .3s var(--spring);
+}
+.row:hover { background:var(--glass-hover); border-color:var(--line-strong); transform:translateX(2px); }
+.row .rp { font-weight:600; font-variant-numeric: tabular-nums; color:var(--text); flex:none; min-width:88px; }
+.row .rt { color:var(--text-dim); font-size:13px; flex:1; min-width:0; }
+.row .rs { color:var(--text-faint); font-size:11.5px; flex:none; }
+.row.is-cheapest { border-color: var(--accent); background: var(--accent-soft); }
+.row.is-cheapest .rp { color: var(--accent); }
+.excluded-note {
+  margin-top:14px; font-size:12px; color:var(--text-faint);
+  padding:10px 12px; border:1px dashed var(--line); border-radius:10px;
+}
+
 @media (max-width:640px) {
   .hero { padding-top:34px; }
   .card { padding:22px; }
@@ -535,7 +553,9 @@ function renderResult(r) {
           <a class="link-btn primary" href="${esc(r.cheapest.url)}" target="_blank" rel="noopener noreferrer">
             View at ${esc(r.cheapest.seller_name || 'dealer')} ↗
           </a>
-          <button class="link-btn" onclick="openModal()">Inspect &amp; trace source</button>
+          <button class="link-btn" onclick="openModal()">
+            See all ${esc(r.fair_price.n_listings)} listings
+          </button>
         </div>
       </div>`);
   } else if (r.message) {
@@ -579,37 +599,70 @@ function renderResult(r) {
   $('#results').innerHTML = out.join('');
 }
 
-/* ── modal ─────────────────────────────────────────────── */
-function openModal() {
-  const r = lastResult;
-  if (!r || !r.cheapest || !r.fair_price) return;
-  const rows = [
+/* ── modal: every listing behind the numbers ───────────── */
+function summaryRows(r) {
+  return [
     ['Reference', r.resolved.ref],
-    ['Brand', r.resolved.brand],
-    ['Model', r.resolved.model_name],
-    ['Listing title', r.cheapest.raw_title],
-    ['Seller', r.cheapest.seller_name || '—'],
-    ['Listed price', money(r.cheapest.price_amount) + ' ' + r.cheapest.price_currency],
-    ['First seen', new Date(r.cheapest.seen_at).toLocaleString()],
     ['Median / fair', money(r.fair_price.median_price)],
     ['Observed range', money(r.fair_price.min_price) + ' – ' + money(r.fair_price.max_price)],
-    ['USD listings', r.fair_price.n_listings],
+    ['USD listings priced', r.fair_price.n_listings],
     ['Excluded (non-USD)', r.fair_price.excluded_other_currency],
+    ['Excluded (implausible price)', r.fair_price.excluded_implausible],
   ];
-  $('#modal').innerHTML = `
+}
+
+async function openModal() {
+  const r = lastResult;
+  if (!r || !r.cheapest || !r.fair_price) return;
+
+  const head = `
     <h3>${esc(r.resolved.brand)} ${esc(r.resolved.model_name)}</h3>
     <div style="color:var(--text-faint);font-size:12.5px;margin:6px 0 20px">
-      Every field below is observed data — crawled listing records and figures computed from them.
+      Observed data only — crawled listing records and figures computed from them.
       No estimated specifications.
     </div>
-    ${rows.map(([k, v]) => `
+    ${summaryRows(r).map(([k, v]) => `
       <div class="spec"><span class="sk">${esc(k)}</span><span class="sv">${esc(v)}</span></div>
-    `).join('')}
+    `).join('')}`;
+
+  const foot = `
     <div class="modal-foot">
-      <a class="link-btn" href="${esc(r.cheapest.url)}" target="_blank" rel="noopener noreferrer">Open listing ↗</a>
       <button class="link-btn primary" onclick="closeModal()">Close</button>
     </div>`;
+
+  $('#modal').innerHTML = head + `
+    <div class="rows" id="rows">
+      <div class="skel" style="height:44px;margin-bottom:8px"></div>
+      <div class="skel" style="height:44px;margin-bottom:8px"></div>
+      <div class="skel" style="height:44px"></div>
+    </div>` + foot;
   $('#overlay').classList.add('show');
+
+  try {
+    const res = await fetch('/api/listings/' + encodeURIComponent(r.resolved.ref));
+    const items = await res.json();
+    const cheapest = items.length ? Number(items[0].price_amount) : null;
+    const excluded = r.fair_price.excluded_implausible + r.fair_price.excluded_other_currency;
+    $('#rows').innerHTML = `
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.16em;
+                  color:var(--text-faint);margin:22px 0 12px">
+        All ${items.length} listing${items.length === 1 ? '' : 's'} priced
+      </div>
+      ${items.map(it => `
+        <a class="row ${Number(it.price_amount) === cheapest ? 'is-cheapest' : ''}"
+           href="${esc(it.url)}" target="_blank" rel="noopener noreferrer">
+          <span class="rp">${esc(money(it.price_amount))}</span>
+          <span class="rt">${esc(it.raw_title)}</span>
+          <span class="rs">${esc(it.seller_name || '')}</span>
+        </a>`).join('')}
+      ${excluded ? `<div class="excluded-note">
+        ${r.fair_price.excluded_other_currency} listing(s) excluded as non-USD;
+        ${r.fair_price.excluded_implausible} excluded as implausibly priced for this reference
+        — deposits, parts and accessories carry the reference number without being the watch.
+      </div>` : ''}`;
+  } catch (e) {
+    $('#rows').innerHTML = `<div class="msg">Couldn't load the listings.</div>`;
+  }
 }
 function closeModal() { $('#overlay').classList.remove('show'); }
 $('#overlay').onclick = (e) => { if (e.target === $('#overlay')) closeModal(); };

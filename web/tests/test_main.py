@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from assay_watch_web import main
-from assay_watch_web.mcp_client import CatalogEntry
+from assay_watch_web.mcp_client import CatalogEntry, CheapestListing
 from assay_watch_web.search import SearchResult
 
 
@@ -97,3 +97,46 @@ def test_references_endpoint_returns_the_tracked_catalogue(
     resp = client.get("/api/references")
     assert resp.status_code == 200
     assert resp.json() == [{"ref": "126610LN", "brand": "Rolex", "model_name": "Submariner Date"}]
+
+
+def test_listings_endpoint_returns_the_rows_behind_the_numbers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_listings(url: str, reference: str) -> list[CheapestListing]:
+        assert reference == "126610LN"
+        return [
+            CheapestListing(
+                seller_name="dealer",
+                price_amount="12500.00",
+                price_currency="USD",
+                raw_title="Rolex Submariner",
+                url="https://dealer.test/x",
+                seen_at="2026-01-01T00:00:00Z",
+            )
+        ]
+
+    monkeypatch.setattr(main, "list_listings", fake_listings)
+
+    client = TestClient(main.app)
+    resp = client.get("/api/listings/126610LN")
+    assert resp.status_code == 200
+    assert resp.json()[0]["price_amount"] == "12500.00"
+
+
+def test_listings_endpoint_handles_a_reference_containing_a_slash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Patek references look like 5711/1A -- without a :path route they
+    would 404 as a two-segment URL."""
+    seen: list[str] = []
+
+    async def fake_listings(url: str, reference: str) -> list[CheapestListing]:
+        seen.append(reference)
+        return []
+
+    monkeypatch.setattr(main, "list_listings", fake_listings)
+
+    client = TestClient(main.app)
+    resp = client.get("/api/listings/5711%2F1A")
+    assert resp.status_code == 200
+    assert seen == ["5711/1A"]
