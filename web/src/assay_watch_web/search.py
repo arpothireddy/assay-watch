@@ -153,14 +153,40 @@ async def run_search(
         web = await gemini.search_web_market(
             api_key=gemini_api_key, model=gemini_model, reference=resolved
         )
+        message = (
+            f"No dealer listings for the {resolved.brand} {resolved.model_name} "
+            f"({resolved.ref}) in our latest crawl."
+            + ("" if web else " A live web search didn't turn up sourced pricing either.")
+        )
+        if web is None:
+            # Nothing grounded came back, so there is nothing to analyse.
+            # Writing observations here would be the model talking about
+            # figures that do not exist, which is the one thing it must not
+            # do -- the honest dead end is better than an invented one.
+            await stage("done", "Done")
+            return SearchResult(query=query, resolved=resolved, message=message)
+
+        # This branch used to end here, so a reference with no crawled
+        # listings got prices and no reading of them -- exactly the case
+        # where a buyer has least to go on and most needs one.
+        await (on_partial or _noop_partial)(
+            SearchResult(query=query, resolved=resolved, web_market=web, message=message)
+        )
+        await stage("explain", f"Weighing {len(web.sources)} web source(s)")
+        web_text = on_text or _noop_text
+        web_parts: list[str] = []
+        async for chunk in gemini.stream_web_market_explanation(
+            api_key=gemini_api_key, model=gemini_model, reference=resolved, web=web
+        ):
+            web_parts.append(chunk)
+            await web_text(chunk)
         await stage("done", "Done")
         return SearchResult(
             query=query,
             resolved=resolved,
             web_market=web,
-            message=f"No dealer listings for the {resolved.brand} {resolved.model_name} "
-            f"({resolved.ref}) in our latest crawl."
-            + ("" if web else " A live web search didn't turn up sourced pricing either."),
+            explanation="".join(web_parts).strip() or None,
+            message=message,
         )
 
     # Hand over the numbers before asking for prose about them: they are

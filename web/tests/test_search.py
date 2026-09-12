@@ -414,3 +414,71 @@ async def test_an_explanation_that_never_arrives_is_not_an_error(
     )
     assert result.explanation is None
     assert result.fair_price == _FAIR
+
+
+async def test_a_reference_with_no_listings_still_gets_an_analysis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """This branch used to return prices with no reading of them -- the case
+    where a buyer has least to go on and most needs one."""
+
+    async def find_reference(url: str, query: str) -> list[ReferenceMatch]:
+        return [ReferenceMatch(**_SUB.model_dump(), confidence="exact")]
+
+    monkeypatch.setattr(mcp_client, "find_reference", find_reference)
+    monkeypatch.setattr(mcp_client, "get_cheapest_listing", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(mcp_client, "get_fair_price", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(gemini, "search_web_market", lambda *a, **k: _returns(_WEB))
+    monkeypatch.setattr(
+        gemini, "stream_web_market_explanation", _explains("Asking prices ", "are not verified.")
+    )
+
+    chunks: list[str] = []
+    partials: list[search.SearchResult] = []
+
+    async def on_text(chunk: str) -> None:
+        chunks.append(chunk)
+
+    async def on_partial(result: search.SearchResult) -> None:
+        partials.append(result)
+
+    result = await search.run_search(
+        "126610LN",
+        mcp_url="http://mcp",
+        gemini_api_key="k",
+        gemini_model="m",
+        on_text=on_text,
+        on_partial=on_partial,
+    )
+    # The web snapshot goes out before the prose about it, same as pricing.
+    assert len(partials) == 1
+    assert partials[0].web_market == _WEB
+    assert chunks == ["Asking prices ", "are not verified."]
+    assert result.explanation == "Asking prices are not verified."
+    assert result.web_market == _WEB
+
+
+async def test_nothing_grounded_means_no_analysis_at_all(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With no sourced figures there is nothing to analyse, and observations
+    here would be the model discussing numbers that do not exist."""
+
+    async def find_reference(url: str, query: str) -> list[ReferenceMatch]:
+        return [ReferenceMatch(**_SUB.model_dump(), confidence="exact")]
+
+    def fail_explain(*args: object, **kwargs: object) -> AsyncIterator[str]:
+        raise AssertionError("must not write an analysis with no grounded figures")
+
+    monkeypatch.setattr(mcp_client, "find_reference", find_reference)
+    monkeypatch.setattr(mcp_client, "get_cheapest_listing", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(mcp_client, "get_fair_price", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(gemini, "search_web_market", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(gemini, "stream_web_market_explanation", fail_explain)
+
+    result = await search.run_search(
+        "126610LN", mcp_url="http://mcp", gemini_api_key="k", gemini_model="m"
+    )
+    assert result.explanation is None
+    assert result.web_market is None
+    assert result.message and "web search" in result.message.lower()

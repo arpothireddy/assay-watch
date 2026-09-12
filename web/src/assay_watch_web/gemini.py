@@ -141,6 +141,54 @@ async def stream_fair_price_explanation(
         logger.exception("streaming explanation failed for %s", reference.ref)
 
 
+def _web_explain_prompt(reference: CatalogEntry, web: WebMarketSnapshot) -> str:
+    offers = "\n".join(
+        f"- {o.price_text} at {o.merchant or 'a seller'}"
+        + (f" ({o.condition})" if o.condition else "")
+        for o in web.offers
+    )
+    guide = "\n".join(f"- {g.label}: {g.price_text}" for g in web.guidance)
+    return (
+        f"We have no listings of our own for the {reference.brand} "
+        f"{reference.model_name} (ref. {reference.ref}). A web search found:"
+        f"\n\n{web.summary}\n"
+        + (f"\nIndividual asking prices found:\n{offers}\n" if offers else "")
+        + (f"\nBy configuration:\n{guide}\n" if guide else "")
+        + f"\nSources: {len(web.sources)} page(s).\n\n"
+        "Write two or three short observations for someone deciding what to "
+        "pay: what the figures above imply about a sensible number, what the "
+        "box-and-papers gap is worth if it is given, and how much confidence "
+        f"{len(web.sources)} source(s) of asking prices deserves compared "
+        "with dealer listings we collected ourselves.\n\n"
+        "One observation per line, each a single sentence, no bullet "
+        "characters or numbering. Use only the figures above -- invent "
+        "nothing. Say plainly that these are asking prices read off search "
+        "results rather than a price we verified."
+    )
+
+
+async def stream_web_market_explanation(
+    *, api_key: str, model: str, reference: CatalogEntry, web: WebMarketSnapshot
+) -> AsyncIterator[str]:
+    """The same streamed observations, for a reference we have no listings of
+    our own for.
+
+    Reads only what the grounded search already returned -- it is summarising
+    figures that have each survived the citation and price checks, not going
+    back out to the market on its own.
+    """
+    client = genai.Client(api_key=api_key)
+    try:
+        stream = await client.aio.models.generate_content_stream(
+            model=model, contents=_web_explain_prompt(reference, web)
+        )
+        async for chunk in stream:
+            if chunk.text:
+                yield chunk.text
+    except Exception:
+        logger.exception("streaming web-market explanation failed for %s", reference.ref)
+
+
 class WebSource(BaseModel):
     title: str
     url: str

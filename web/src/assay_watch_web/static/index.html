@@ -947,12 +947,12 @@ function analysisHTML(r, streaming) {
     <div class="analysis${streaming ? '' : ' settled'}">
       <div class="a-head"><span class="a-glyph"></span>Analysis</div>
       <div class="explain"${!streaming && !r.explanation ? ' hidden' : ''} id="stream-text">${prose}</div>
-      <div class="stats">
+      ${r.fair_price ? `<div class="stats">
         ${summaryRows(r).map(([k, v], i) => `
           <div class="stat" style="animation-delay:${120 + i * 85}ms">
             <span class="sk">${esc(k)}</span><span class="sv">${esc(v)}</span>
           </div>`).join('')}
-      </div>
+      </div>` : ''}
     </div>`;
 }
 
@@ -1034,6 +1034,7 @@ function renderResult(r, streaming) {
             <span class="ref-chip">${esc(r.resolved.ref)}</span>
           </div>
           <div class="explain" style="border:0;padding-top:18px;margin-top:8px">${esc(r.message)}</div>
+          ${(streaming || r.explanation) ? analysisHTML(r, streaming) : ''}
         ` : `<div class="msg">${esc(r.message)}</div>`}
       </div>`);
   }
