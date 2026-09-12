@@ -338,7 +338,17 @@ h1 .dim { color: var(--text-dim); }
 }
 @keyframes a-pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:.35; transform:scale(.8); } }
 .analysis.settled .a-glyph { animation:none; background:var(--text-faint); opacity:.5; }
-.explain { color:var(--text-dim); font-size:14.5px; line-height:1.6; min-height:1.6em; }
+.explain { color:var(--text-dim); font-size:14.5px; line-height:1.65; min-height:1.65em; }
+/* One observation per line, each fading in as its line completes, so the
+   block builds the way a person reading it would arrive at the points --
+   rather than one paragraph appearing a word at a time. */
+.obs { display:flex; gap:11px; margin-top:13px; animation: statin .45s var(--spring) both; }
+.obs:first-child { margin-top:0; }
+.obs::before {
+  content:""; flex:none; width:4px; height:4px; border-radius:1px; margin-top:8px;
+  background:var(--accent); opacity:.55;
+}
+.obs-text { flex:1; min-width:0; }
 .stats { margin-top:20px; }
 .stat {
   display:flex; justify-content:space-between; gap:18px; padding:9px 0;
@@ -401,6 +411,20 @@ h1 .dim { color: var(--text-dim); }
 .offer .om { font-size:12.5px; color:var(--text-dim); }
 .offer .oc { font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--text-faint); }
 .offer-note { margin-top:12px; font-size:11.5px; color:var(--text-faint); line-height:1.5; }
+
+/* What to pay, by configuration. Completeness moves a used watch's price
+   more than anything else, so this is usually the most actionable thing on
+   the card when we have no listings of our own. */
+.guide { margin-top:22px; }
+.guide-head { font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--text-faint); margin-bottom:12px; }
+.g-row {
+  display:flex; align-items:baseline; justify-content:space-between; gap:20px;
+  padding:13px 0; border-bottom:1px solid var(--line);
+}
+.g-row:last-child { border-bottom:0; }
+.g-label { font-size:13.5px; color:var(--text); }
+.g-note { display:block; font-size:11.5px; color:var(--text-faint); margin-top:3px; max-width:46ch; }
+.g-price { font-size:16px; font-weight:600; font-variant-numeric: tabular-nums; color:var(--accent); flex:none; }
 
 .sources { margin-top:18px; display:flex; flex-direction:column; gap:8px; }
 .source {
@@ -901,12 +925,28 @@ function meterHTML(cheapest, fair) {
 /* The figures are already final when this renders -- they are computed,
    not written -- so they are staggered rather than typed: each drops in a
    beat after the last while the prose beside them is still being written. */
+function observationsHTML(text) {
+  return splitObservations(text)
+    .map(l => `<div class="obs"><span class="obs-text">${esc(l)}</span></div>`)
+    .join('');
+}
+
+/* The model is asked for one observation per line. Blank lines and stray
+   bullet characters are stripped here rather than trusted away in the
+   prompt -- the rendering should not depend on it having complied. */
+function splitObservations(text) {
+  return (text || '')
+    .split('\n')
+    .map(l => l.replace(/^\s*[-•*\d.)\s]+/, '').trim())
+    .filter(Boolean);
+}
+
 function analysisHTML(r, streaming) {
-  const prose = streaming ? '' : esc(r.explanation || '');
+  const prose = streaming ? '' : observationsHTML(r.explanation);
   return `
     <div class="analysis${streaming ? '' : ' settled'}">
       <div class="a-head"><span class="a-glyph"></span>Analysis</div>
-      <div class="explain"${!streaming && !r.explanation ? ' hidden' : ''}><span id="stream-text">${prose}</span>${streaming ? '<span class="caret" id="caret"></span>' : ''}</div>
+      <div class="explain"${!streaming && !r.explanation ? ' hidden' : ''} id="stream-text">${prose}</div>
       <div class="stats">
         ${summaryRows(r).map(([k, v], i) => `
           <div class="stat" style="animation-delay:${120 + i * 85}ms">
@@ -1011,6 +1051,16 @@ function renderResult(r, streaming) {
         <div class="explain" style="border:0;padding-top:16px;margin-top:6px;color:var(--text)">
           ${esc(w.summary)}
         </div>
+        ${w.guidance && w.guidance.length ? `
+          <div class="guide">
+            <div class="guide-head">What to pay</div>
+            ${w.guidance.map(g => `
+              <div class="g-row">
+                <span class="g-label">${esc(g.label)}
+                  ${g.note ? `<span class="g-note">${esc(g.note)}</span>` : ''}</span>
+                <span class="g-price">${esc(g.price_text)}</span>
+              </div>`).join('')}
+          </div>` : ''}
         ${w.offers && w.offers.length ? `
           <div class="offers">
             ${w.offers.map(o => `
@@ -1043,21 +1093,52 @@ function renderResult(r, streaming) {
    screen, so re-rendering would only replay the entrance animation on a
    card the reader has been looking at for several seconds. Settle the
    streamed text in place instead. */
+let streamBuf = '';
+
 function finalizeStream(r) {
   lastResult = r;
   const caret = $('#caret');
   if (caret) caret.remove();
-  const text = $('#stream-text');
-  if (!text) { renderResult(r); return; }
-  if (r.explanation) text.textContent = r.explanation;
-  else text.parentElement.hidden = true;
+  const host = $('#stream-text');
+  if (!host) { renderResult(r); return; }
+  // The assembled text is authoritative -- the streamed buffer may have been
+  // cut short if the connection dropped mid-sentence.
+  if (r.explanation) host.innerHTML = observationsHTML(r.explanation);
+  else host.hidden = true;
   const a = document.querySelector('.analysis');
   if (a) a.classList.add('settled');
 }
 
+function caretEl() {
+  let c = $('#caret');
+  if (!c) {
+    c = document.createElement('span');
+    c.className = 'caret';
+    c.id = 'caret';
+  }
+  return c;
+}
+
+/* Grows the observation list in place. Existing rows are never re-created:
+   rebuilding the block on every token would restart each row's entrance
+   animation, so the whole thing would flicker once per chunk. */
 function appendStream(chunk) {
-  const text = $('#stream-text');
-  if (text) text.textContent += chunk;
+  streamBuf += chunk;
+  const host = $('#stream-text');
+  if (!host) return;
+  const lines = splitObservations(streamBuf);
+  while (host.children.length < lines.length) {
+    const row = document.createElement('div');
+    row.className = 'obs';
+    row.innerHTML = '<span class="obs-text"></span>';
+    host.appendChild(row);
+  }
+  lines.forEach((line, i) => {
+    const cell = host.children[i].querySelector('.obs-text');
+    if (cell.textContent !== line) cell.textContent = line;
+  });
+  const last = host.lastElementChild;
+  if (last) last.querySelector('.obs-text').appendChild(caretEl());
 }
 
 /* The figures behind the headline numbers, listed under the analysis --
@@ -1138,6 +1219,7 @@ async function runSearch(query) {
   $('#go').disabled = true;
   resetPipeline();
   showSkeleton();
+  streamBuf = '';
   let streamed = false;
 
   try {

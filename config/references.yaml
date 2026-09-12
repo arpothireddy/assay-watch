@@ -214,3 +214,136 @@ references:
       category: "time-and-date"
       integrated_bracelet: true
     enabled: true
+
+  # ── Added 2026-09-12 ────────────────────────────────────────────────────
+  # A wider set of the models people actually search for. Two cautions that
+  # apply to this whole batch:
+  #
+  # 1. The reference numbers here were written from knowledge, not read off
+  #    the makers' own catalogues. A wrong `ref` fails silently -- nothing
+  #    errors, the reference simply never matches a listing and shows an
+  #    empty page forever -- so check these against the maker before relying
+  #    on the counts. `search_aliases` softens this: a listing usually still
+  #    matches on the model name even when the number is off.
+  # 2. `specs` remains hand-curated and unverified, as the header says.
+  #    Fields are omitted rather than guessed where they are uncertain.
+  - ref: "126600"
+    brand: "Rolex"
+    model_name: "Sea-Dweller 43"
+    search_aliases: ["126600", "Sea-Dweller 43", "Sea Dweller"]
+    specs:
+      case_mm: 43
+      movement: "automatic"
+      category: "dive"
+      integrated_bracelet: false
+    enabled: true
+  - ref: "226570"
+    brand: "Rolex"
+    model_name: "Explorer II"
+    search_aliases: ["226570", "Explorer II"]
+    specs:
+      case_mm: 42
+      movement: "automatic"
+      category: "gmt"
+      integrated_bracelet: false
+    enabled: true
+  - ref: "326934"
+    brand: "Rolex"
+    model_name: "Sky-Dweller"
+    search_aliases: ["326934", "Sky-Dweller", "Sky Dweller"]
+    specs:
+      case_mm: 42
+      movement: "automatic"
+      category: "time-and-date"
+      integrated_bracelet: false
+    enabled: true
+  - ref: "126622"
+    brand: "Rolex"
+    model_name: "Yacht-Master 40"
+    search_aliases: ["126622", "Yacht-Master 40", "Yachtmaster"]
+    specs:
+      case_mm: 40
+      movement: "automatic"
+      category: "time-and-date"
+      integrated_bracelet: false
+    enabled: true
+  - ref: "126720VTNR"
+    brand: "Rolex"
+    model_name: "GMT-Master II Sprite"
+    search_aliases: ["126720VTNR", "126720", "Sprite"]
+    specs:
+      case_mm: 40
+      movement: "automatic"
+      category: "gmt"
+      integrated_bracelet: false
+    enabled: true
+  - ref: "228238"
+    brand: "Rolex"
+    model_name: "Day-Date 40"
+    search_aliases: ["228238", "Day-Date 40", "Day Date", "President"]
+    specs:
+      case_mm: 40
+      movement: "automatic"
+      category: "time-and-date"
+      integrated_bracelet: false
+    enabled: true
+  - ref: "M25407N"
+    brand: "Tudor"
+    model_name: "Pelagos 39"
+    search_aliases: ["M25407N", "25407N", "Pelagos 39"]
+    specs:
+      case_mm: 39
+      movement: "automatic"
+      category: "dive"
+      integrated_bracelet: false
+    enabled: true
+  - ref: "M79000N"
+    brand: "Tudor"
+    model_name: "Black Bay 54"
+    search_aliases: ["M79000N", "79000N", "Black Bay 54"]
+    specs:
+      case_mm: 37
+      movement: "automatic"
+      category: "dive"
+      integrated_bracelet: false
+    enabled: true
+  - ref: "SBGA211"
+    brand: "Grand Seiko"
+    model_name: "Snowflake"
+    search_aliases: ["SBGA211", "Snowflake"]
+    specs:
+      case_mm: 41
+      movement: "automatic"
+      category: "time-and-date"
+      integrated_bracelet: false
+    enabled: true
+  - ref: "IW329301"
+    brand: "IWC"
+    model_name: "Big Pilot 43"
+    search_aliases: ["IW329301", "Big Pilot"]
+    specs:
+      case_mm: 43
+      movement: "automatic"
+      category: "time-and-date"
+      integrated_bracelet: false
+    enabled: true
+  - ref: "PAM01312"
+    brand: "Panerai"
+    model_name: "Luminor Marina"
+    search_aliases: ["PAM01312", "PAM 01312", "Luminor Marina"]
+    specs:
+      case_mm: 44
+      movement: "automatic"
+      category: "time-and-date"
+      integrated_bracelet: false
+    enabled: true
+  - ref: "4500V/110A-B128"
+    brand: "Vacheron Constantin"
+    model_name: "Overseas"
+    search_aliases: ["4500V", "Overseas 4500V"]
+    specs:
+      case_mm: 41
+      movement: "automatic"
+      category: "time-and-date"
+      integrated_bracelet: true
+    enabled: true

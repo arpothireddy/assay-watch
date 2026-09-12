@@ -274,11 +274,13 @@ async def test_each_discard_reason_is_logged_distinctly(
     assert "ungrounded" in text
 
 
-def _Offers(offers: list[gemini.WebOffer]) -> Any:
-    """The real structured-output model -- resolve_reference and this both
-    isinstance-check what came back, so a stand-in would pass a test the
-    production code would reject."""
-    return gemini._ExtractedOffers(offers=offers)
+def _Offers(
+    offers: list[gemini.WebOffer], guidance: list[gemini.ConditionGuide] | None = None
+) -> Any:
+    """The real structured-output model -- the production code
+    isinstance-checks what came back, so a stand-in would pass a test the
+    real path would reject."""
+    return gemini._Extracted(offers=offers, guidance=guidance or [])
 
 
 def _grounded(text: str, url: str = "https://x.test/a") -> _Response:
@@ -387,3 +389,58 @@ async def test_no_extraction_call_is_made_for_an_ungrounded_answer(
 
     assert await gemini.search_web_market(api_key="k", model="m", reference=_SUB) is None
     assert calls["n"] == 1
+
+
+async def test_guidance_is_extracted_per_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Completeness moves a used watch's price more than anything else, so a
+    single market figure is the one answer a buyer cannot act on."""
+    _stub_client(
+        monkeypatch,
+        _grounded("Full sets ask about $14,000; the watch alone trades nearer $12,500."),
+        _Parsed(
+            _Offers(
+                [],
+                [
+                    gemini.ConditionGuide(
+                        label="Full set (box & papers)",
+                        price_text="$14,000",
+                        note="Papers carry a premium on this reference.",
+                    ),
+                    gemini.ConditionGuide(label="Watch only", price_text="$12,500"),
+                ],
+            )
+        ),
+    )
+
+    out = await gemini.search_web_market(api_key="k", model="m", reference=_SUB)
+    assert out is not None
+    assert [(g.label, g.price_text) for g in out.guidance] == [
+        ("Full set (box & papers)", "$14,000"),
+        ("Watch only", "$12,500"),
+    ]
+
+
+async def test_guidance_priced_outside_the_grounded_text_is_dropped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Guidance carries no URL to check against, so the price check is the
+    only thing between a buyer and an invented number."""
+    _stub_client(
+        monkeypatch,
+        _grounded("Full sets ask about $14,000."),
+        _Parsed(
+            _Offers(
+                [],
+                [
+                    gemini.ConditionGuide(label="Full set (box & papers)", price_text="$14,000"),
+                    gemini.ConditionGuide(label="Watch only", price_text="$11,200"),
+                ],
+            )
+        ),
+    )
+
+    out = await gemini.search_web_market(api_key="k", model="m", reference=_SUB)
+    assert out is not None
+    assert [g.label for g in out.guidance] == ["Full set (box & papers)"]

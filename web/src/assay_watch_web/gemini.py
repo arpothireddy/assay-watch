@@ -101,10 +101,15 @@ def _explain_prompt(reference: CatalogEntry, cheapest: CheapestListing, fair: Fa
             if fair.excluded_other_currency
             else ""
         )
-        + "\n\nWrite one or two short, factual sentences explaining why the "
-        "median is a reasonable 'fair price' reference point. Use only the "
-        "numbers given -- don't invent anything, and don't repeat all the "
-        "numbers verbatim since they're already shown elsewhere on the page."
+        + "\n\nWrite two or three short observations about what these numbers "
+        "mean for someone deciding whether to buy: whether the cheapest "
+        "listing looks like a genuine saving or a warning, how much weight "
+        "the median carries given how many listings it rests on, and what "
+        "the spread says about the market.\n\n"
+        "One observation per line, each a single sentence, no bullet "
+        "characters or numbering. Use only the numbers given -- don't invent "
+        "anything, and don't restate them all, since they're already shown "
+        "beside this."
     )
 
 
@@ -158,6 +163,22 @@ class WebOffer(BaseModel):
     condition: str | None = None
 
 
+class ConditionGuide(BaseModel):
+    """What a buyer should expect to pay for one configuration of the watch.
+
+    Completeness moves the price of a used luxury watch more than almost
+    anything else -- a full set with box and papers against a bare head is
+    routinely a five-figure gap on the references tracked here -- so a single
+    "market price" is the one answer a buyer cannot act on. Same provenance
+    rules as WebOffer: read out of a grounded search, never computed, and
+    kept out of every figure derived from crawled listings.
+    """
+
+    label: str
+    price_text: str
+    note: str | None = None
+
+
 class WebMarketSnapshot(BaseModel):
     """What a live web search found. Deliberately a *different* type from
     FairPrice: that one is computed from listings we crawled ourselves off
@@ -169,10 +190,12 @@ class WebMarketSnapshot(BaseModel):
     sources: list[WebSource]
     queries: list[str]
     offers: list[WebOffer] = []
+    guidance: list[ConditionGuide] = []
 
 
-class _ExtractedOffers(BaseModel):
+class _Extracted(BaseModel):
     offers: list[WebOffer]
+    guidance: list[ConditionGuide]
 
 
 _DIGITS = re.compile(r"\d+")
@@ -212,11 +235,17 @@ async def search_web_market(
         f"Search for what a {reference.brand} {reference.model_name} "
         f"(reference {reference.ref}) is currently selling for on the "
         "pre-owned and grey market.\n\n"
-        "Write two or three short, factual sentences covering the typical "
-        "asking-price range you found and anything notable about current "
-        "availability. Attribute figures to what the search results actually "
-        "say. If the results disagree or are thin, say so plainly rather "
-        "than settling on a confident number."
+        "Cover, in a few short factual sentences:\n"
+        "- the typical asking-price range you found;\n"
+        "- what the same watch goes for as a full set with box and papers "
+        "versus as the watch alone, since that gap is usually the single "
+        "biggest thing a buyer can act on;\n"
+        "- what unworn or new examples ask against pre-owned ones;\n"
+        "- anything notable about current availability.\n\n"
+        "State the actual figures you found for each of those, not just that "
+        "a difference exists. Attribute them to what the search results say. "
+        "If the results disagree or are thin, say so plainly rather than "
+        "settling on a confident number."
     )
     client = genai.Client(api_key=api_key)
     try:
@@ -267,19 +296,23 @@ async def search_web_market(
 
     # Only now, once the answer is known to be grounded, is it worth a second
     # call to pull the individual asking prices out of it.
-    offers = await _extract_offers(
+    offers, guidance = await _extract_offers(
         client=client, model=model, reference=reference, grounded_text=summary, sources=sources
     )
 
     logger.info(
-        "web market search for %s grounded in %d source(s) via %d query(ies), %d offer(s) kept",
+        "web market search for %s grounded in %d source(s) via %d query(ies), "
+        "%d offer(s) and %d guidance row(s) kept",
         reference.ref,
         len(sources),
         len(queries),
         len(offers),
+        len(guidance),
     )
 
-    return WebMarketSnapshot(summary=summary, sources=sources, queries=queries, offers=offers)
+    return WebMarketSnapshot(
+        summary=summary, sources=sources, queries=queries, offers=offers, guidance=guidance
+    )
 
 
 async def _extract_offers(
@@ -289,8 +322,9 @@ async def _extract_offers(
     reference: CatalogEntry,
     grounded_text: str,
     sources: list[WebSource],
-) -> list[WebOffer]:
-    """Pull individual asking prices out of a grounded answer.
+) -> tuple[list[WebOffer], list[ConditionGuide]]:
+    """Pull the individual asking prices, and the what-to-pay guidance, out
+    of a grounded answer.
 
     A second call rather than a schema on the first one: structured output
     and the search tool do not reliably coexist in one request, and splitting
@@ -308,10 +342,16 @@ async def _extract_offers(
         "Below is the result of a web search for asking prices on a "
         f"{reference.brand} {reference.model_name} (ref. {reference.ref}), "
         "followed by the pages it came from.\n\n"
-        "Extract each distinct asking price it states. Copy the price "
-        "exactly as written, including its currency symbol. Attach each one "
-        "to the page URL it came from, chosen from the list below. Note the "
-        "condition (new, unworn, pre-owned) only if the text says so.\n\n"
+        "Return two things.\n\n"
+        "offers: each distinct asking price the text states for a specific "
+        "listing. Copy the price exactly as written, including its currency "
+        "symbol. Attach each to the page URL it came from, chosen from the "
+        "list below. Note the condition only if the text says so.\n\n"
+        "guidance: what a buyer should expect to pay for each configuration "
+        "the text gives a figure for -- full set with box and papers, watch "
+        "only, unworn, pre-owned. Label each one in those words, give the "
+        "price as written, and add a short note only if the text explains "
+        "the difference. Omit any configuration the text does not price.\n\n"
         "Do not calculate, convert, average or estimate any price, and do "
         "not include a price the text does not state. If it gives only a "
         "range with no individual prices, return no offers.\n\n"
@@ -323,17 +363,17 @@ async def _extract_offers(
             model=model,
             contents=prompt,
             config=types.GenerateContentConfig(
-                response_mime_type="application/json", response_schema=_ExtractedOffers
+                response_mime_type="application/json", response_schema=_Extracted
             ),
         )
     except Exception:
         logger.exception("offer extraction failed for %s", reference.ref)
-        return []
+        return [], []
 
     parsed = resp.parsed
-    if not isinstance(parsed, _ExtractedOffers):
+    if not isinstance(parsed, _Extracted):
         logger.warning("offer extraction for %s could not be parsed", reference.ref)
-        return []
+        return [], []
 
     kept: list[WebOffer] = []
     for offer in parsed.offers:
@@ -352,4 +392,18 @@ async def _extract_offers(
             )
             continue
         kept.append(offer)
-    return kept
+
+    # Guidance carries no URL to check, so the price check is the only thing
+    # standing between a buyer and an invented number. It is not optional.
+    guide: list[ConditionGuide] = []
+    for row in parsed.guidance:
+        if not _price_is_supported(row.price_text, grounded_text):
+            logger.warning(
+                "dropping %r guidance for %s priced %r, which is not in the grounded text",
+                row.label,
+                reference.ref,
+                row.price_text,
+            )
+            continue
+        guide.append(row)
+    return kept, guide
