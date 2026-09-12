@@ -1,6 +1,5 @@
-"""Two narrowly-scoped Gemini calls -- no chat, no agent loop, no tool-calling
-from the model itself. Each is a single request/response with structured
-output:
+"""Narrowly-scoped Gemini calls -- no chat, no agent loop. Each is a single
+request/response:
 
 - resolve_reference: fallback for when the MCP server's deterministic
   word-overlap matching can't confidently resolve a query (ambiguous
@@ -9,15 +8,23 @@ output:
 - explain_fair_price: one short, factual sentence from real numbers already
   in hand. Not asked to invent anything -- just to phrase what the pricing
   tools already computed.
+- search_web_market: the one call that does reach outside, via Gemini's
+  Google Search grounding. Only runs when our own crawl has nothing for a
+  resolved reference, and its output is kept provenance-separate from
+  crawled data everywhere it surfaces -- see its docstring.
 """
 
 from __future__ import annotations
+
+import logging
 
 from google import genai
 from google.genai import types
 from pydantic import BaseModel
 
 from .mcp_client import CatalogEntry, CheapestListing, FairPrice
+
+logger = logging.getLogger(__name__)
 
 
 class ResolvedPick(BaseModel):
@@ -88,3 +95,85 @@ async def explain_fair_price(
     client = genai.Client(api_key=api_key)
     resp = await client.aio.models.generate_content(model=model, contents=prompt)
     return (resp.text or "").strip()
+
+
+class WebSource(BaseModel):
+    title: str
+    url: str
+    domain: str | None = None
+
+
+class WebMarketSnapshot(BaseModel):
+    """What a live web search found. Deliberately a *different* type from
+    FairPrice: that one is computed from listings we crawled ourselves off
+    dealer sites we vetted, this one is a language model's reading of search
+    results. Keeping them as separate types means neither the API nor the UI
+    can accidentally present one as the other."""
+
+    summary: str
+    sources: list[WebSource]
+    queries: list[str]
+
+
+async def search_web_market(
+    *, api_key: str, model: str, reference: CatalogEntry
+) -> WebMarketSnapshot | None:
+    """Ask Gemini, with Google Search grounding, what this reference is
+    currently asking on the open market.
+
+    This is the fallback for a reference we track but have no crawled
+    listings for -- which is the common case, since the dealers we crawl
+    stock a narrower slice of the market than the references people search
+    for. Returns ``None`` rather than raising if the call fails or comes
+    back ungrounded: a missing extra is not worth failing the whole search
+    over, and an *ungrounded* answer here would be exactly the model
+    guessing prices from memory, which is the one thing this must not do.
+    """
+    prompt = (
+        f"Search for what a {reference.brand} {reference.model_name} "
+        f"(reference {reference.ref}) is currently selling for on the "
+        "pre-owned and grey market.\n\n"
+        "Write two or three short, factual sentences covering the typical "
+        "asking-price range you found and anything notable about current "
+        "availability. Attribute figures to what the search results actually "
+        "say. If the results disagree or are thin, say so plainly rather "
+        "than settling on a confident number."
+    )
+    client = genai.Client(api_key=api_key)
+    try:
+        resp = await client.aio.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())]
+            ),
+        )
+    except Exception:
+        logger.exception("web market search failed for %s", reference.ref)
+        return None
+
+    summary = (resp.text or "").strip()
+    if not summary:
+        return None
+
+    candidates = resp.candidates or []
+    meta = candidates[0].grounding_metadata if candidates else None
+    chunks = (meta.grounding_chunks or []) if meta else []
+    queries = list((meta.web_search_queries or []) if meta else [])
+
+    sources: list[WebSource] = []
+    for chunk in chunks:
+        web = getattr(chunk, "web", None)
+        if web is None or not web.uri:
+            continue
+        sources.append(
+            WebSource(title=web.title or web.uri, url=web.uri, domain=getattr(web, "domain", None))
+        )
+
+    # No grounding chunks means the model answered without actually
+    # consulting search results -- unsourced price claims are worse than no
+    # answer, so drop it.
+    if not sources:
+        return None
+
+    return WebMarketSnapshot(summary=summary, sources=sources, queries=queries)

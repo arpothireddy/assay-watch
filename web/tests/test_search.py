@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 
 from assay_watch_web import gemini, mcp_client, search
-from assay_watch_web.gemini import ResolvedPick
+from assay_watch_web.gemini import ResolvedPick, WebMarketSnapshot, WebSource
 from assay_watch_web.mcp_client import CatalogEntry, CheapestListing, FairPrice, ReferenceMatch
 
 _SUB = CatalogEntry(ref="126610LN", brand="Rolex", model_name="Submariner Date")
@@ -27,6 +27,13 @@ _FAIR = FairPrice(
     max_price="14000.00",
     n_listings=3,
     excluded_other_currency=0,
+)
+_WEB = WebMarketSnapshot(
+    summary="Asking prices cluster around $13k on the grey market.",
+    sources=[
+        WebSource(title="Example listing", url="https://example.test/x", domain="example.test")
+    ],
+    queries=["rolex submariner 126610LN price"],
 )
 
 
@@ -153,7 +160,7 @@ async def test_gemini_declining_to_pick_is_a_clean_no_match(
     assert result.message
 
 
-async def test_resolved_reference_with_no_current_listings(
+async def test_no_crawled_listings_falls_back_to_a_web_search(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def find_reference(url: str, query: str) -> list[ReferenceMatch]:
@@ -166,10 +173,102 @@ async def test_resolved_reference_with_no_current_listings(
     monkeypatch.setattr(mcp_client, "get_cheapest_listing", lambda *a, **k: _returns(None))
     monkeypatch.setattr(mcp_client, "get_fair_price", lambda *a, **k: _returns(None))
     monkeypatch.setattr(gemini, "explain_fair_price", fail_explain)
+    monkeypatch.setattr(gemini, "search_web_market", lambda *a, **k: _returns(_WEB))
 
     result = await search.run_search(
         "126610LN", mcp_url="http://mcp", gemini_api_key="k", gemini_model="m"
     )
     assert result.resolved is not None
     assert result.cheapest is None
-    assert result.message and "no current" in result.message.lower()
+    assert result.fair_price is None
+    # The web snapshot rides in its own field -- never folded into
+    # fair_price, which means "computed from listings we crawled ourselves".
+    assert result.web_market == _WEB
+    assert result.message and "no dealer listings" in result.message.lower()
+
+
+async def test_web_search_returning_nothing_is_not_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def find_reference(url: str, query: str) -> list[ReferenceMatch]:
+        return [ReferenceMatch(**_SUB.model_dump(), confidence="exact")]
+
+    monkeypatch.setattr(mcp_client, "find_reference", find_reference)
+    monkeypatch.setattr(mcp_client, "get_cheapest_listing", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(mcp_client, "get_fair_price", lambda *a, **k: _returns(None))
+    monkeypatch.setattr(gemini, "search_web_market", lambda *a, **k: _returns(None))
+
+    result = await search.run_search(
+        "126610LN", mcp_url="http://mcp", gemini_api_key="k", gemini_model="m"
+    )
+    assert result.resolved is not None
+    assert result.web_market is None
+    assert result.message and "web search" in result.message.lower()
+
+
+async def test_web_search_is_skipped_when_crawled_pricing_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The paid-for, slower, less-trusted path must not run when we already
+    have our own data -- otherwise every search costs a web search."""
+
+    async def find_reference(url: str, query: str) -> list[ReferenceMatch]:
+        return [ReferenceMatch(**_SUB.model_dump(), confidence="exact")]
+
+    async def fail_web(*args: object, **kwargs: object) -> None:
+        raise AssertionError("web search must not run when crawled pricing is present")
+
+    monkeypatch.setattr(mcp_client, "find_reference", find_reference)
+    monkeypatch.setattr(mcp_client, "get_cheapest_listing", lambda *a, **k: _returns(_CHEAPEST))
+    monkeypatch.setattr(mcp_client, "get_fair_price", lambda *a, **k: _returns(_FAIR))
+    monkeypatch.setattr(gemini, "explain_fair_price", lambda *a, **k: _returns("Looks fair."))
+    monkeypatch.setattr(gemini, "search_web_market", fail_web)
+
+    result = await search.run_search(
+        "126610LN", mcp_url="http://mcp", gemini_api_key="k", gemini_model="m"
+    )
+    assert result.web_market is None
+    assert result.fair_price == _FAIR
+
+
+async def test_stage_callback_reports_the_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def find_reference(url: str, query: str) -> list[ReferenceMatch]:
+        return [ReferenceMatch(**_SUB.model_dump(), confidence="exact")]
+
+    monkeypatch.setattr(mcp_client, "find_reference", find_reference)
+    monkeypatch.setattr(mcp_client, "get_cheapest_listing", lambda *a, **k: _returns(_CHEAPEST))
+    monkeypatch.setattr(mcp_client, "get_fair_price", lambda *a, **k: _returns(_FAIR))
+    monkeypatch.setattr(gemini, "explain_fair_price", lambda *a, **k: _returns("Looks fair."))
+
+    seen: list[str] = []
+
+    async def on_stage(stage: str, detail: str) -> None:
+        seen.append(stage)
+
+    await search.run_search(
+        "126610LN",
+        mcp_url="http://mcp",
+        gemini_api_key="k",
+        gemini_model="m",
+        on_stage=on_stage,
+    )
+    assert seen[0] == "find_reference"
+    assert "pricing" in seen
+    assert seen[-1] == "done"
+
+
+async def test_search_works_without_a_stage_callback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """on_stage is optional -- /api/search passes none."""
+
+    async def find_reference(url: str, query: str) -> list[ReferenceMatch]:
+        return [ReferenceMatch(**_SUB.model_dump(), confidence="exact")]
+
+    monkeypatch.setattr(mcp_client, "find_reference", find_reference)
+    monkeypatch.setattr(mcp_client, "get_cheapest_listing", lambda *a, **k: _returns(_CHEAPEST))
+    monkeypatch.setattr(mcp_client, "get_fair_price", lambda *a, **k: _returns(_FAIR))
+    monkeypatch.setattr(gemini, "explain_fair_price", lambda *a, **k: _returns("Looks fair."))
+
+    result = await search.run_search(
+        "126610LN", mcp_url="http://mcp", gemini_api_key="k", gemini_model="m"
+    )
+    assert result.cheapest == _CHEAPEST
