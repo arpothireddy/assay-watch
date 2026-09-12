@@ -200,37 +200,39 @@ h1 .dim { color: var(--text-dim); }
 }
 .filters-toggle { display:none; }
 
-/* ── working indicator: four dots orbiting a square ─────── */
-.spinner {
-  width:13px; height:13px; position:relative; flex:none;
-  animation: orbit 1.5s linear infinite;
-}
+/* ── spinner: one dot stepping round a square ────────────
+   Discrete corner-to-corner hops rather than a smooth orbit -- that snap is
+   what reads as a terminal spinner rather than a loading graphic. A faint
+   trailing dot sits one corner behind so the direction of travel is legible
+   at this size. */
+.spinner { width:11px; height:11px; position:relative; flex:none; }
 .spinner i {
-  position:absolute; width:3.5px; height:3.5px; border-radius:50%;
+  position:absolute; top:0; left:0; width:3.5px; height:3.5px; border-radius:50%;
   background: var(--accent);
+  animation: square-step .72s steps(1, end) infinite;
 }
-.spinner i:nth-child(1) { top:0; left:0; }
-.spinner i:nth-child(2) { top:0; right:0; animation: fade 1.5s ease-in-out -0.375s infinite; }
-.spinner i:nth-child(3) { bottom:0; right:0; animation: fade 1.5s ease-in-out -0.75s infinite; }
-.spinner i:nth-child(4) { bottom:0; left:0; animation: fade 1.5s ease-in-out -1.125s infinite; }
-@keyframes orbit { to { transform: rotate(360deg); } }
-@keyframes fade { 0%,100% { opacity:1; } 50% { opacity:.25; } }
+.spinner i.trail { opacity:.3; animation-delay: -.18s; }
+@keyframes square-step {
+  0%   { transform: translate(0, 0); }
+  25%  { transform: translate(7.5px, 0); }
+  50%  { transform: translate(7.5px, 7.5px); }
+  75%  { transform: translate(0, 7.5px); }
+  100% { transform: translate(0, 0); }
+}
 
-/* ── pipeline ───────────────────────────────────────────── */
-.pipeline { margin-top:30px; display:none; }
-.pipeline.show { display:block; }
-.stage {
-  display:flex; align-items:center; gap:10px;
+/* ── working line ────────────────────────────────────────
+   One line that rewrites itself as the pipeline moves, rather than a
+   transcript that grows down the page: at any moment there is exactly one
+   thing happening, so showing one line is both truer and calmer. */
+.pipeline {
+  margin-top:28px; display:none; align-items:center; gap:11px;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  font-size:12.5px; color:var(--text-dim);
-  padding:5px 0;
-  animation: slideIn .45s var(--spring) both;
+  font-size:12.5px; color:var(--text-dim); min-height:20px;
 }
-@keyframes slideIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
-.stage .tag { color:var(--accent); }
-.stage .mark { width:13px; display:flex; align-items:center; justify-content:center; flex:none; }
-.stage .dot { width:5px; height:5px; border-radius:50%; background: var(--good); }
-.stage.done { color: var(--text-faint); }
+.pipeline.show { display:flex; }
+.pl-text { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.pl-tag { color:var(--accent); }
+.pl-detail { color:var(--text-faint); }
 
 /* ── results ────────────────────────────────────────────── */
 .results { margin-top:34px; padding-bottom:90px; }
@@ -432,7 +434,10 @@ h1 .dim { color: var(--text-dim); }
 
     </div>
 
-    <div class="pipeline" id="pipeline"></div>
+      <div class="pipeline" id="pipeline">
+      <span class="spinner"><i class="trail"></i><i></i></span>
+      <span class="pl-text" id="pl-text"></span>
+    </div>
   </section>
 
   <section class="results" id="results"></section>
@@ -714,29 +719,32 @@ const LABELS = {
   done: 'done',
 };
 const pipeline = $('#pipeline');
-function resetPipeline() { pipeline.innerHTML = ''; pipeline.classList.add('show'); }
-const SPINNER = `<span class="spinner"><i></i><i></i><i></i><i></i></span>`;
-const DONE_DOT = `<span class="dot"></span>`;
+const plText = $('#pl-text');
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-function settleRow(el) {
-  el.classList.remove('active');
-  el.classList.add('done');
-  const mark = el.querySelector('.mark');
-  if (mark) mark.innerHTML = DONE_DOT;
+function resetPipeline() {
+  plText.innerHTML = '';
+  pipeline.classList.add('show');
 }
 
+/* Rewrites the one line in place. The brief fade is what makes a swap read
+   as "moved on to the next thing" rather than a flicker. */
 function addStage(stage, detail) {
-  pipeline.querySelectorAll('.stage.active').forEach(settleRow);
-  const row = document.createElement('div');
-  row.className = 'stage active';
   const tool = LABELS[stage] || stage;
-  row.innerHTML = `<span class="mark">${SPINNER}</span><span class="tag">[MCP]</span>
-    <span>${esc(tool)}</span><span style="color:var(--text-faint)">— ${esc(detail)}</span>`;
-  pipeline.appendChild(row);
+  plText.innerHTML =
+    `<span class="pl-tag">[MCP]</span> ${esc(tool)} <span class="pl-detail">— ${esc(detail)}</span>`;
+  if (!REDUCED) {
+    plText.animate(
+      [{opacity: 0, transform: 'translateY(3px)'}, {opacity: 1, transform: 'none'}],
+      {duration: 240, easing: 'cubic-bezier(0.16, 1, 0.3, 1)'}
+    );
+  }
 }
 
 function settlePipeline() {
-  pipeline.querySelectorAll('.stage.active').forEach(settleRow);
+  // The result card is the outcome; leaving a spent status line above it
+  // would just be clutter.
+  pipeline.classList.remove('show');
 }
 
 /* ── skeleton ──────────────────────────────────────────── */
