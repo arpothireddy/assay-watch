@@ -144,8 +144,8 @@ Or do the same from the Cloud Build console -- open the build, click
 
 ```bash
 # Staging URLs:
-gcloud run services describe assay-watch-web-staging --region=us-central1 --format='value(status.url)'
-gcloud run services describe assay-watch-mcp-staging --region=us-central1 --format='value(status.url)'
+gcloud run services describe assay-watch-web-staging2 --region=us-central1 --format='value(status.url)'
+gcloud run services describe assay-watch-mcp-staging2 --region=us-central1 --format='value(status.url)'
 
 # After approval, production URLs:
 gcloud run services describe assay-watch-web --region=us-central1 --format='value(status.url)'

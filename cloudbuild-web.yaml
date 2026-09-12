@@ -16,8 +16,16 @@
 substitutions:
   _REGION: us-central1
   _AR_REPO: assay-watch
-  _MCP_STAGING: assay-watch-mcp-staging
-  _WEB_STAGING: assay-watch-web-staging
+  # Renamed from assay-watch-{mcp,web}-staging: those hostnames 404'd at
+  # Google's edge for over an hour across many delete/redeploy cycles even
+  # with a fully healthy, fully public (verified IAM + ingress) container
+  # underneath -- while a same-flags service under an unused name worked
+  # instantly. Cloud Run default URLs are deterministic (service name +
+  # project number), so a delete/recreate under the old name reuses the
+  # exact same hostname; a fresh name sidesteps whatever stuck edge routing
+  # state that hostname had accumulated.
+  _MCP_STAGING: assay-watch-mcp-staging2
+  _WEB_STAGING: assay-watch-web-staging2
   _MCP_RUNTIME_SA: assay-watch-mcp-runtime
   _WEB_RUNTIME_SA: assay-watch-web-runtime
   _READER_DB_SECRET: assay-watch-reader-db-url
