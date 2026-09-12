@@ -49,6 +49,13 @@ Crawling policy applies to every implemented source:
 | Autodromo | autodromo.com | _reported reachable_ | _reported to permit it_ | _pending_ |
 | Bremont | www.bremont.com | _reported reachable_ | _reported to permit it_ | _pending_ |
 | Halios Watches | halioswatches.com | _reported reachable_ | _reported to permit it_ | _pending_ |
+| Cellini Jewelers | www.cellinijewelers.com | _reported reachable_ | _reported to permit it_ | _pending_ |
+| Material Good | materialgood.com | _reported reachable_ | _reported to permit it_ | _pending_ |
+| Avi & Co. | www.aviandco.com | _reported reachable_ | _reported to permit it_ | _pending_ |
+| Feldmar Watch Co. | feldmarwatch.com | _reported reachable_ | _reported to permit it_ | _pending_ |
+| H.L. Gross & Bro. | www.hlgross.com | _reported reachable_ | _reported to permit it_ | _pending_ |
+| Shinola | www.shinola.com | _reported reachable_ | _reported to permit it_ | _pending_ |
+| Nixon | www.nixon.com | _reported reachable_ | _reported to permit it_ | _pending_ |
 
 `/products.json` and `robots.txt` were checked 2026-09-09 (first four) and
 2026-09-11 (next three). "No explicit ban found" is a ToS skim, not a full
@@ -57,15 +64,16 @@ a lawyer signed off. Flip a store back to `enabled: false` in
 `config/sources.yaml` if a closer read turns up a problem. Every store marked
 `_pending_` hasn't had even that skim yet.
 
-**Provenance of the 2026-09-12 batch (the seven marked _reported_).** Those
+**Provenance of the 2026-09-12 batches (every store marked _reported_).** Those
 reachability and `robots.txt` checks were run and supplied by the project
 owner; they were not performed in the session that added the stores, which
 had no outbound network access and could not fetch a single `robots.txt` to
 confirm. They are recorded as *reported* rather than *verified* so that
 distinction survives in the record -- re-run them from an environment with
 network access and change the wording once they have been seen first-hand.
-All seven remain `_pending_` on terms of service, which is the check that
-has not happened at all.
+They all remain `_pending_` on terms of service, which is the check that has
+not happened at all -- worth closing for the large commercial dealers in
+particular before the crawl runs against them for long.
 
 Currency note: Bulang & Sons is UK-based, recorded as `GBP`. Collective
 Horology, Bremont (UK) and Halios (Canada) have unconfirmed presentment
@@ -75,13 +83,16 @@ wrong guess prices a foreign listing as dollars and corrupts every median it
 lands in; unset means the row is counted as non-USD and excluded from
 pricing, which is visibly missing rather than quietly wrong.
 
-Coverage note: of the 2026-09-12 batch, only WatchGuys, SwissWatchExpo and
-(for vintage) Theo & Harris can match the tracked references -- they are
-multi-brand dealers carrying the modern Rolex/Patek/AP the catalogue is
-built around. Oak & Oscar, Autodromo, Bremont and Halios sell only their own
-watches and will return nothing for every tracked reference until the
-catalogue covers those brands. They are enabled because they were vetted,
-not because they close the gap.
+Coverage note: the stores added on 2026-09-12 split cleanly in two. The
+multi-brand dealers -- WatchGuys, SwissWatchExpo, Cellini, Material Good,
+Avi & Co., Feldmar, H.L. Gross, and Theo & Harris for vintage -- carry the
+modern Rolex/Patek/AP the catalogue is built around, and are the actual
+coverage fix. The single-brand storefronts -- Oak & Oscar, Autodromo,
+Bremont, Halios, Shinola, Nixon -- sell only their own watches and will
+return nothing for every tracked reference until the catalogue covers those
+brands. They are enabled because they were vetted, not because they help.
+Shinola and Nixon sit outside the luxury segment entirely; if the catalogue
+is meant to stay luxury, they are the two to drop.
 
 ### Checked and rejected
 

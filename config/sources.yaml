@@ -90,6 +90,44 @@ sources:
         base_url: "https://halioswatches.com"
         enabled: true
 
+      # ── Added 2026-09-12 (second batch) ───────────────────────────────
+      # Multi-brand US luxury retailers -- NY and LA. This is the batch that
+      # should actually move coverage: between them they carry the modern
+      # Rolex, Patek and AP the tracked catalogue is built around.
+      - name: "cellini-jewelers"
+        base_url: "https://www.cellinijewelers.com"
+        currency: "USD"
+        enabled: true
+      - name: "material-good"
+        base_url: "https://materialgood.com"
+        currency: "USD"
+        enabled: true
+      - name: "avi-and-co"
+        base_url: "https://www.aviandco.com"
+        currency: "USD"
+        enabled: true
+      - name: "feldmar-watch"
+        base_url: "https://feldmarwatch.com"
+        currency: "USD"
+        enabled: true
+      - name: "hl-gross"
+        base_url: "https://www.hlgross.com"
+        currency: "USD"
+        enabled: true
+
+      # Single-brand again, and further afield than the rest: both sell only
+      # their own watches, and neither is in the luxury segment the tracked
+      # catalogue covers. They will match no tracked reference. Enabled as
+      # supplied, but flag them if the catalogue is meant to stay luxury.
+      - name: "shinola"
+        base_url: "https://www.shinola.com"
+        currency: "USD"
+        enabled: true
+      - name: "nixon"
+        base_url: "https://www.nixon.com"
+        currency: "USD"
+        enabled: true
+
   # ── eBay APIs ──────────────────────────────────────────────────────────────
   # Registered but unconfigured until developer-program credentials are set
   # (ASSAY_EBAY_CLIENT_ID / ASSAY_EBAY_CLIENT_SECRET). While unconfigured the
