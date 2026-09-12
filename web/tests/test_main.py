@@ -67,6 +67,33 @@ def test_stream_emits_stages_then_the_result(monkeypatch: pytest.MonkeyPatch) ->
     assert msgs[-1]["result"]["message"] == "stubbed"  # type: ignore[index]
 
 
+def test_stream_emits_the_partial_and_the_text_it_streams(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The front end renders the card off the partial and appends the text
+    chunks into it, so the order here is the contract: partial before any
+    text, and a final result carrying the assembled explanation."""
+
+    async def fake_run_search(query: str, **kwargs: object) -> SearchResult:
+        on_partial = kwargs["on_partial"]
+        on_text = kwargs["on_text"]
+        await on_partial(SearchResult(query=query))  # type: ignore[operator]
+        await on_text("Half ")  # type: ignore[operator]
+        await on_text("a thought.")  # type: ignore[operator]
+        return SearchResult(query=query, explanation="Half a thought.")
+
+    monkeypatch.setattr(main, "run_search", fake_run_search)
+
+    client = TestClient(main.app)
+    resp = client.post("/api/search/stream", json={"query": "126610LN"})
+    assert resp.status_code == 200
+
+    msgs = _sse_messages(resp.text)
+    assert [m["type"] for m in msgs] == ["partial", "text", "text", "result"]
+    assert msgs[1]["chunk"] == "Half "
+    assert msgs[-1]["result"]["explanation"] == "Half a thought."  # type: ignore[index]
+
+
 def test_stream_reports_a_failure_without_leaking_internals(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

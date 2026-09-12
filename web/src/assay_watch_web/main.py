@@ -5,7 +5,10 @@ Two search endpoints intentionally:
   what the deploy pipeline's smoke test exercises.
 - POST /api/search/stream emits the same result, preceded by the pipeline
   stages as they actually happen, so the UI can report real progress
-  instead of animating a guess.
+  instead of animating a guess. It also emits the pricing on its own the
+  moment it is final ("partial") and the explanation a token at a time
+  ("text"), so the page fills in as the work completes rather than all at
+  once at the end.
 """
 
 from __future__ import annotations
@@ -93,6 +96,12 @@ async def search_stream(request: SearchRequest) -> StreamingResponse:
         async def on_stage(stage: str, detail: str) -> None:
             await queue.put({"type": "stage", "stage": stage, "detail": detail})
 
+        async def on_text(chunk: str) -> None:
+            await queue.put({"type": "text", "chunk": chunk})
+
+        async def on_partial(result: SearchResult) -> None:
+            await queue.put({"type": "partial", "result": result.model_dump(mode="json")})
+
         async def run() -> None:
             try:
                 result = await run_search(
@@ -101,6 +110,8 @@ async def search_stream(request: SearchRequest) -> StreamingResponse:
                     gemini_api_key=settings.gemini_api_key,
                     gemini_model=settings.gemini_model,
                     on_stage=on_stage,
+                    on_text=on_text,
+                    on_partial=on_partial,
                 )
                 await queue.put({"type": "result", "result": result.model_dump(mode="json")})
             except Exception:

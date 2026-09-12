@@ -32,6 +32,10 @@
   --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 40px -12px rgba(0,0,0,.7);
 
   --spring: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Apple's sheet curve: slower out of the gate and long on the tail, which
+     is what makes a panel look like it is unfolding rather than popping. */
+  --island: cubic-bezier(0.32, 0.72, 0, 1);
+  --island-close: cubic-bezier(0.4, 0, 0.2, 1);
   --maxw: 1080px;
 }
 [data-theme="light"] {
@@ -291,7 +295,22 @@ h1 .dim { color: var(--text-dim); }
 .marker.at-end .lbl { left:auto; right:0; transform:none; }
 .meter-scale { display:flex; justify-content:space-between; margin-top:16px; font-size:11.5px; color:var(--text-faint); font-variant-numeric: tabular-nums; }
 
-.explain { margin-top:26px; padding-top:22px; border-top:1px solid var(--line); color:var(--text-dim); font-size:14.5px; }
+/* Analysis: the prose the model writes, and the figures it is writing
+   about. Both arrive live -- the prose streams token by token, the figures
+   drop in one after another -- so the block fills in while you read it. */
+.analysis { margin-top:26px; padding-top:22px; border-top:1px solid var(--line); }
+.a-head { font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--text-faint); margin-bottom:14px; }
+.explain { color:var(--text-dim); font-size:14.5px; line-height:1.6; min-height:1.6em; }
+.stats { margin-top:20px; }
+.stat {
+  display:flex; justify-content:space-between; gap:18px; padding:9px 0;
+  border-bottom:1px solid var(--line); font-size:13px;
+  animation: statin .5s var(--spring) both;
+}
+.stat:last-child { border-bottom:0; }
+.stat .sk { color:var(--text-faint); }
+.stat .sv { color:var(--text); text-align:right; font-variant-numeric: tabular-nums; }
+@keyframes statin { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
 .actions { margin-top:22px; display:flex; gap:10px; flex-wrap:wrap; }
 .link-btn {
   appearance:none; cursor:pointer; font:inherit; font-size:13.5px; font-weight:500;
@@ -303,6 +322,29 @@ h1 .dim { color: var(--text-dim); }
 .link-btn.primary { background: var(--text); color: var(--bg); border-color:transparent; }
 
 .msg { color:var(--text-dim); font-size:15px; }
+
+/* "which did you mean" — a category query like "GMT" matches several
+   tracked references equally, so the choice belongs to the reader. */
+.choices { margin-top:18px; display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; }
+.choice {
+  display:flex; flex-direction:column; gap:4px; text-align:left;
+  cursor:pointer; font:inherit; color:var(--text);
+  background:var(--glass); border:1px solid var(--line); border-radius:14px; padding:14px;
+  transition: all .35s var(--spring);
+}
+.choice:hover { background:var(--glass-hover); border-color:var(--accent); transform:translateY(-2px); }
+.choice .c-brand { font-size:10.5px; letter-spacing:.15em; text-transform:uppercase; color:var(--text-faint); }
+.choice .c-model { font-size:15px; font-weight:500; letter-spacing:-0.01em; }
+.choice .c-ref { font-family: ui-monospace, Menlo, monospace; font-size:11px; color:var(--text-dim); }
+
+/* Caret trailing the streamed explanation, so a pause reads as "still
+   writing" rather than "finished early". */
+.caret {
+  display:inline-block; width:2px; height:1em; margin-left:2px;
+  background:var(--accent); vertical-align:-0.15em;
+  animation: blink 1.05s steps(1, end) infinite;
+}
+@keyframes blink { 0%,50% { opacity:1; } 50.01%,100% { opacity:0; } }
 
 /* web-market block: visually distinct from crawled pricing on purpose */
 .web-card { border-color: rgba(232,163,61,.28); }
@@ -346,23 +388,45 @@ h1 .dim { color: var(--text-dim); }
 .tile .t-ref { font-family: ui-monospace, Menlo, monospace; font-size:11px; color:var(--text-dim); margin-top:9px; }
 
 /* ── modal ──────────────────────────────────────────────── */
+/* Both directions animate. Visibility rather than display so there is
+   something left to transition on the way out -- display:none would snap
+   the panel away the instant it was asked to close. Its delay is what
+   keeps the overlay around until the contraction has finished. */
 .overlay {
-  position:fixed; inset:0; z-index:50; display:none;
+  position:fixed; inset:0; z-index:50;
+  display:flex; align-items:flex-start; justify-content:center;
   background: rgba(0,0,0,.62); backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px);
   padding:24px; overflow-y:auto;
+  opacity:0; visibility:hidden;
+  transition: opacity .5s var(--island-close), visibility 0s linear .5s;
 }
-.overlay.show { display:flex; align-items:flex-start; justify-content:center; animation: fade .3s var(--spring); }
-@keyframes fade { from { opacity:0; } to { opacity:1; } }
+.overlay.open { opacity:1; visibility:visible; transition: opacity .42s var(--island), visibility 0s; }
+/* Closed, the panel is a squat capsule with its contents clipped away; open,
+   it is the full sheet. Growing between the two is the whole effect. */
 .modal {
-  background: var(--bg-raised); border:1px solid var(--line); border-radius:22px;
+  background: var(--bg-raised); border:1px solid var(--line);
   max-width:640px; width:100%; margin:auto; padding:30px;
-  box-shadow: var(--shadow); animation: rise .45s var(--spring) both;
+  box-shadow: var(--shadow); overflow:hidden;
+  border-radius:999px; transform: translateY(-18px) scale(.82);
+  /* Each direction gets its own curve, because a transition takes its
+     easing from the state it is heading toward. --island is heavily
+     front-loaded, which is right on the way out (the sheet unfolds and
+     settles) and wrong on the way back, where it covered the whole
+     contraction in the first fifty milliseconds and then sat still. */
+  transition: transform .5s var(--island-close), border-radius .5s var(--island-close);
+}
+.overlay.open .modal {
+  border-radius:22px; transform:none;
+  transition: transform .52s var(--island), border-radius .52s var(--island);
+}
+/* The contents cross-fade a beat behind the shell, so they appear to be
+   revealed by the expansion rather than stretched along with it. */
+.modal-inner { opacity:0; transition: opacity .26s ease; }
+.overlay.open .modal-inner { opacity:1; transition: opacity .3s ease .16s; }
+@media (prefers-reduced-motion: reduce) {
+  .overlay, .overlay .modal, .modal-inner { transition-duration: .01ms; }
 }
 .modal h3 { font-size:21px; font-weight:600; letter-spacing:-0.02em; }
-.spec { display:flex; justify-content:space-between; gap:18px; padding:11px 0; border-bottom:1px solid var(--line); font-size:13.5px; }
-.spec:last-child { border-bottom:0; }
-.spec .sk { color:var(--text-faint); }
-.spec .sv { color:var(--text); text-align:right; word-break:break-word; font-variant-numeric: tabular-nums; }
 .modal-foot { margin-top:24px; display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; }
 
 /* every-listing table */
@@ -777,7 +841,25 @@ function meterHTML(cheapest, fair) {
     </div>`;
 }
 
-function renderResult(r) {
+/* The figures are already final when this renders -- they are computed,
+   not written -- so they are staggered rather than typed: each drops in a
+   beat after the last while the prose beside them is still being written. */
+function analysisHTML(r, streaming) {
+  const prose = streaming ? '' : esc(r.explanation || '');
+  return `
+    <div class="analysis">
+      <div class="a-head">Analysis</div>
+      <div class="explain"${!streaming && !r.explanation ? ' hidden' : ''}><span id="stream-text">${prose}</span>${streaming ? '<span class="caret" id="caret"></span>' : ''}</div>
+      <div class="stats">
+        ${summaryRows(r).map(([k, v], i) => `
+          <div class="stat" style="animation-delay:${120 + i * 85}ms">
+            <span class="sk">${esc(k)}</span><span class="sv">${esc(v)}</span>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+function renderResult(r, streaming) {
   lastResult = r;
   const out = [];
 
@@ -816,7 +898,7 @@ function renderResult(r) {
         </div>
 
         ${meterHTML(r.cheapest, r.fair_price)}
-        ${r.explanation ? `<div class="explain">${esc(r.explanation)}</div>` : ''}
+        ${analysisHTML(r, streaming)}
 
         <div class="actions">
           <a class="link-btn primary" href="${esc(r.cheapest.url)}" target="_blank" rel="noopener noreferrer">
@@ -825,6 +907,19 @@ function renderResult(r) {
           <button class="link-btn" onclick="openModal()">
             See all ${esc(r.fair_price.n_listings)} listings
           </button>
+        </div>
+      </div>`);
+  } else if (r.choices && r.choices.length) {
+    out.push(`
+      <div class="card">
+        <div class="msg">${esc(r.message || 'Several tracked watches match that.')}</div>
+        <div class="choices">
+          ${r.choices.map(c => `
+            <button class="choice" data-ref="${esc(c.ref)}">
+              <span class="c-brand">${esc(c.brand)}</span>
+              <span class="c-model">${esc(c.model_name)}</span>
+              <span class="c-ref">${esc(c.ref)}</span>
+            </button>`).join('')}
         </div>
       </div>`);
   } else if (r.message) {
@@ -866,12 +961,34 @@ function renderResult(r) {
   }
 
   $('#results').innerHTML = out.join('');
+  $('#results').querySelectorAll('.choice').forEach(b => {
+    b.onclick = () => { $('#q').value = b.dataset.ref; runSearch(b.dataset.ref); };
+  });
 }
 
-/* ── modal: every listing behind the numbers ───────────── */
+/* The final result carries the same numbers the partial already put on
+   screen, so re-rendering would only replay the entrance animation on a
+   card the reader has been looking at for several seconds. Settle the
+   streamed text in place instead. */
+function finalizeStream(r) {
+  lastResult = r;
+  const caret = $('#caret');
+  if (caret) caret.remove();
+  const text = $('#stream-text');
+  if (!text) { renderResult(r); return; }
+  if (r.explanation) text.textContent = r.explanation;
+  else text.parentElement.hidden = true;
+}
+
+function appendStream(chunk) {
+  const text = $('#stream-text');
+  if (text) text.textContent += chunk;
+}
+
+/* The figures behind the headline numbers, listed under the analysis --
+   what was counted, what it spanned, and what was thrown out. */
 function summaryRows(r) {
   return [
-    ['Reference', r.resolved.ref],
     ['Median / fair', money(r.fair_price.median_price)],
     ['Observed range', money(r.fair_price.min_price) + ' – ' + money(r.fair_price.max_price)],
     ['USD listings priced', r.fair_price.n_listings],
@@ -880,32 +997,35 @@ function summaryRows(r) {
   ];
 }
 
+/* ── modal: every listing behind the numbers ───────────── */
 async function openModal() {
   const r = lastResult;
   if (!r || !r.cheapest || !r.fair_price) return;
 
   const head = `
     <h3>${esc(r.resolved.brand)} ${esc(r.resolved.model_name)}</h3>
-    <div style="color:var(--text-faint);font-size:12.5px;margin:6px 0 20px">
-      Observed data only — crawled listing records and figures computed from them.
+    <div style="color:var(--text-faint);font-size:12.5px;margin:6px 0 4px">
+      Every listing behind the numbers on the card — crawled records only.
       No estimated specifications.
-    </div>
-    ${summaryRows(r).map(([k, v]) => `
-      <div class="spec"><span class="sk">${esc(k)}</span><span class="sv">${esc(v)}</span></div>
-    `).join('')}`;
+    </div>`;
 
   const foot = `
     <div class="modal-foot">
       <button class="link-btn primary" onclick="closeModal()">Close</button>
     </div>`;
 
-  $('#modal').innerHTML = head + `
+  $('#modal').innerHTML = `<div class="modal-inner">` + head + `
     <div class="rows" id="rows">
       <div class="skel" style="height:44px;margin-bottom:8px"></div>
       <div class="skel" style="height:44px;margin-bottom:8px"></div>
       <div class="skel" style="height:44px"></div>
-    </div>` + foot;
-  $('#overlay').classList.add('show');
+    </div>` + foot + `</div>`;
+  // The panel has to be laid out in its closed state before the open class
+  // can read as a transition rather than a starting position. Reading a
+  // layout property flushes that; without it the browser coalesces both
+  // states into one and the sheet simply appears.
+  void $('#modal').offsetHeight;
+  $('#overlay').classList.add('open');
 
   try {
     const res = await fetch('/api/listings/' + encodeURIComponent(r.resolved.ref));
@@ -933,7 +1053,7 @@ async function openModal() {
     $('#rows').innerHTML = `<div class="msg">Couldn't load the listings.</div>`;
   }
 }
-function closeModal() { $('#overlay').classList.remove('show'); }
+function closeModal() { $('#overlay').classList.remove('open'); }
 $('#overlay').onclick = (e) => { if (e.target === $('#overlay')) closeModal(); };
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 
@@ -943,6 +1063,7 @@ async function runSearch(query) {
   $('#go').disabled = true;
   resetPipeline();
   showSkeleton();
+  let streamed = false;
 
   try {
     const res = await fetch('/api/search/stream', {
@@ -966,7 +1087,15 @@ async function runSearch(query) {
         if (!line) continue;
         const msg = JSON.parse(line.slice(6));
         if (msg.type === 'stage') addStage(msg.stage, msg.detail);
-        else if (msg.type === 'result') { settlePipeline(); renderResult(msg.result); }
+        // The prices are final by the time the partial lands; only the prose
+        // about them is still being written. Showing the card now means the
+        // number the reader came for is not waiting on its own commentary.
+        else if (msg.type === 'partial') { streamed = true; renderResult(msg.result, true); }
+        else if (msg.type === 'text') appendStream(msg.chunk);
+        else if (msg.type === 'result') {
+          settlePipeline();
+          if (streamed) finalizeStream(msg.result); else renderResult(msg.result);
+        }
         else if (msg.type === 'error') { settlePipeline(); $('#results').innerHTML =
           `<div class="card"><div class="msg">${esc(msg.message)}</div></div>`; }
       }
